@@ -14,11 +14,9 @@
 #include <fcntl.h>
 #include <math.h>
 #include <errno.h>
+#include <poll.h>
 
 #define MAXLINE 1500
-
-int fd[100];
-int nr_fd = 0;
 
 int counter;
 
@@ -52,6 +50,10 @@ int main(int argc, char const *argv[]) {
     
     /* set stdout BUFF */
     setvbuf(stdout, NULL, _IONBF, BUFSIZ);
+
+    struct pollfd fds[100];
+    int nr_fd = 0;
+
 
     /* ############# UDP SOCKET ############# */
 
@@ -169,6 +171,14 @@ int main(int argc, char const *argv[]) {
     message mesaje[50];
 
     while (true) {
+
+        // /* make a poll */
+        // int rv = poll(fds, nr_fd, -1);
+        // if (rv < 0) {
+        //     perror("poll");
+        //     exit(1);
+        // }
+
         
         /* wait for exit command */
         fgets(command, 10, stdin);
@@ -302,10 +312,12 @@ int main(int argc, char const *argv[]) {
                 exit(EXIT_FAILURE);
             }
 
-            int flags4 = fcntl(client_sock, F_GETFL, 0);
-            fcntl(client_sock, F_SETFL, flags4 | O_NONBLOCK);
+            // int flags4 = fcntl(client_sock, F_GETFL, 0);
+            // fcntl(client_sock, F_SETFL, flags4 | O_NONBLOCK);
 
-            fd[nr_fd++] = client_sock;
+            fds[nr_fd].fd = client_sock;
+            fds[nr_fd].events = POLLIN & POLLOUT;
+            nr_fd++;
             
             // /* close the socket */
             // printf("Client %s disconnected.\n", client_id);
@@ -313,22 +325,96 @@ int main(int argc, char const *argv[]) {
 
         }
 
+        /* $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ */
         /* receive from every fd */
-        char message_tcp[20];
-        memset(message_tcp, 0, sizeof(message_tcp));
-        for(int i = 0 ; i < nr_fd ; i++) {
-            if(recv(fd[i], message_tcp, sizeof(message_tcp), 0) < 0)
-                continue;
+        // char message_tcp[20];
+        // memset(message_tcp, 0, sizeof(message_tcp));
+        // for(int i = 0 ; i < nr_fd ; i++) {
+        //     if(recv(fd[i], message_tcp, sizeof(message_tcp), 0) < 0)
+        //         continue;
             
-            if(message_tcp[0] != '\0' && strcmp(message_tcp, "subscribe\n") == 0) {
-                    printf("Client sent %s", message_tcp);
-            }
+        //     if(message_tcp[0] != '\0' && strcmp(message_tcp, "subscribe\n") == 0) {
+        //             printf("Client sent %s", message_tcp);
+        //     }
 
-            if(message_tcp[0] != '\0' && strcmp(message_tcp, "unsubscribe\n") == 0) {
-                    printf("Client sent %s", message_tcp);
-            }
+        //     if(message_tcp[0] != '\0' && strcmp(message_tcp, "unsubscribe\n") == 0) {
+        //             printf("Client sent %s", message_tcp);
+        //     }
 
+        // }
+        /* $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ */
+
+        
+        for (int i = 0; i < nr_fd; i++) {
+            if (fds[i].revents & POLLIN) {
+                printf("here 0\n");
+                char message_tcp[20];
+                memset(message_tcp, 0, sizeof(message_tcp));
+                ssize_t n = recv(fds[i].fd, message_tcp, sizeof(message_tcp), 0);
+                printf("here 1\n");
+                if (n > 0) {
+                    // process received data
+                    // ...
+                printf("here 2\n");
+                if(message_tcp[0] != '\0' && strcmp(message_tcp, "subscribe\n") == 0) {
+                    printf("Client sent %s", message_tcp);
+                }
+
+                if(message_tcp[0] != '\0' && strcmp(message_tcp, "unsubscribe\n") == 0) {
+                    printf("Client sent %s", message_tcp);
+                }
+
+
+                } else if (n == 0) {
+                    // client closed connection, close client socket
+                    close(fds[i].fd);
+                    fds[i] = fds[--nr_fd];
+                    i--;
+                } else {
+                    // error occurred, close client socket
+                    perror("recv");
+                    close(fds[i].fd);
+                    fds[i] = fds[--nr_fd];
+                    i--;
+                }
+            }
         }
+
+
+
+        
+        /* receive from every fd */
+        // char message_tcp[20];
+        // memset(message_tcp, 0, sizeof(message_tcp));
+        // for (int i = 0; i < nr_fd; i++) {
+        //     int sock = fd[i];
+        //     ssize_t n = recv(sock, message_tcp, sizeof(message_tcp), 0);
+        //     if (n > 0) {
+        //         // process received data
+        //         // ...
+        //         if(message_tcp[0] != '\0' && strcmp(message_tcp, "subscribe\n") == 0) {
+        //             printf("Client sent %s", message_tcp);
+        //         }
+
+        //         if(message_tcp[0] != '\0' && strcmp(message_tcp, "unsubscribe\n") == 0) {
+        //             printf("Client sent %s", message_tcp);
+        //         }
+
+        //     } else if (n < 0 && (errno != EWOULDBLOCK && errno != EAGAIN)) {
+        //         // error occurred, close client socket
+        //         perror("recv");
+        //         close(sock);
+        //         fd[i] = fd[--nr_fd];
+        //         i--;
+        //     } else if (n == 0) {
+        //         // client closed connection, close client socket
+        //         close(sock);
+        //         fd[i] = fd[--nr_fd];
+        //         i--;
+        //     }
+        // }
+
+
     }
 
     for(int i = 0 ; i < nr_fd ; i++) {
