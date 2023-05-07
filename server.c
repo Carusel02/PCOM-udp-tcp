@@ -16,21 +16,59 @@
 #include <errno.h>
 #include <poll.h>
 
-#define MAXLINE 1500
+#define MAXLINE 1600
 
 int counter;
 
 typedef struct message {
-    char topic[50];
-    int type;
+    /* topic */
+    char topic[60];
+    /* type */
+    unsigned int type;
+
+    /* payload */
     char payload[1500];
-    char ip_address[16];
-    char port[6];
-    
     uint32_t INT;
     float SHORT_REAL;
     float FLOAT;
+
+    /* client UDP info */
+    char ip_address[16];
+    char port[6];
 } message;
+
+typedef struct dblock {
+
+
+
+
+} block;
+
+typedef struct database {
+    /* client id */
+    char client_id[20];
+    /* file descriptor */
+    struct pollfd file_desc;
+    /* topics subscribed */
+    char nr_topics_sub[100][60];
+} database;
+
+struct pollfd fds[100];
+int nr_fd = 0;
+
+database base_data[100];
+int nr_base_data = 0;
+
+void extract_topic(char command[100], char topic[60]) {
+    /* clear topic buffer */
+    memset(topic, 0, 60);
+
+    /* extract topic from here */
+    char *token = strtok(command, " ");
+    if(token != NULL)
+        token = strtok(NULL, " ");
+    strcpy(topic, token);
+}
 
 int main(int argc, char const *argv[]) {   
     
@@ -50,11 +88,7 @@ int main(int argc, char const *argv[]) {
     
     /* set stdout BUFF */
     setvbuf(stdout, NULL, _IONBF, BUFSIZ);
-
-    struct pollfd fds[100];
-    int nr_fd = 0;
-
-
+    
     /* ############# UDP SOCKET ############# */
 
     /* declare server socket */
@@ -121,161 +155,184 @@ int main(int argc, char const *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    /* @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ */
-    
-    // /*  Accept an incoming connection from one of the clients */
-    // client_size = sizeof(client_addr);
-    // client_sock = accept(socket_tcp, (struct sockaddr*)&client_addr, &client_size);
-    // if (client_sock < 0){    
-    //     perror("[TCP] Can't accept\n");
-    //     exit(EXIT_FAILURE);
-    // }
-    
-    // /* Receive message from clients. Note that we use client_sock, not socket_tcp */
-    // if (recv(client_sock, client_id, sizeof(client_id), 0) < 0){
-    //     perror("[TCP] Couldn't receive\n");
-    //     exit(EXIT_FAILURE);
-    // }
-
-    // printf("New client %s connected from %s:%i.\n", client_id, 
-    //     inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
-    
-    // /* Write a response to the client */
-    // strcpy(server_message, "This is the server's message.");
-    
-    // if (send(client_sock, server_message, strlen(server_message), 0) < 0) {
-    //     perror("[TCP] Can't send\n");
-    //     exit(EXIT_FAILURE);
-    // }
-    
-    // /* Close the sockets */
-    // printf("Client %s disconnected.\n", client_id);
-    // close(client_sock);
-    // close(socket_tcp);
-
-    /* @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ */
-
     /* make read from STDIN non-block */
-    char command[10];
-    int flag1 = fcntl(STDIN_FILENO, F_GETFL);
-    fcntl(STDIN_FILENO, F_SETFL, flag1 | O_NONBLOCK);
-    /* make server socket UDP non-block */
-    int flag2 = fcntl(sockfd_udp, F_GETFL, 0);
-    fcntl(sockfd_udp, F_SETFL, flag2 | O_NONBLOCK);
-    /* make server socket TCP non-block */
-    int flags3 = fcntl(socket_tcp, F_GETFL, 0);
-    fcntl(socket_tcp, F_SETFL, flags3 | O_NONBLOCK);
+    char command[50];
+
+    /* set input from STDIN */
+    fds[nr_fd].fd = STDIN_FILENO;
+    fds[nr_fd].events = POLLIN;
+    nr_fd++;
+
+    /* add socket UDP */
+    fds[nr_fd].fd = sockfd_udp;
+    fds[nr_fd].events = POLLIN;
+    nr_fd++;
+
+    /* add socket TCP */
+    fds[nr_fd].fd = socket_tcp;
+    fds[nr_fd].events = POLLIN;
+    nr_fd++;
 
 
     /* create array messages */
     message mesaje[50];
 
+     /* server loop */
     while (true) {
 
-        // /* make a poll */
-        // int rv = poll(fds, nr_fd, -1);
-        // if (rv < 0) {
-        //     perror("poll");
-        //     exit(1);
-        // }
-
-        
-        /* wait for exit command */
-        fgets(command, 10, stdin);
-        if(command[0] != '\0' && strcmp(command, "exit\n") == 0) {
-            break;
+        /* make a poll, wait for readiness notification */
+        int rv = poll(fds, nr_fd, -1);
+        if (rv < 0) {
+            perror("poll");
+            exit(1);
         }
 
-        /* receive info from socket_udp */
-        socklen_t len = sizeof(socket_udp);
-        int n = recvfrom(sockfd_udp, (char *)buffer, MAXLINE,
-                         MSG_WAITALL, (struct sockaddr *)&socket_udp,
-                         &len);
-        buffer[n] = '\0';
+        /* read from STDIN */
+        if ((fds[0].revents & POLLIN) != 0) {
+            /* wait for exit command */
+            memset(command, 0, sizeof(command));
+            fgets(command, 50, stdin);
+            if(command[0] != '\0' && strcmp(command, "exit\n") == 0) {
+                break;
+            }
 
-        if(n != -1) {
+            /* send hello command to all clients connected */
+            if(command[0] != '\0' && strcmp(command, "hello\n") == 0) {
 
-        /* extract data from buffer */
-        message msg_udp;
-        memcpy(msg_udp.topic, buffer, 50);
-        memcpy(&msg_udp.type, buffer + 50, sizeof(uint8_t));
+                /* send to every client */
+                for (int i = 3; i < nr_fd; i++) {
+                    if(send(fds[i].fd, command, strlen(command), 0) < 0){
+                        perror("[SERVER] Unable to send command\n");
+                        exit(EXIT_FAILURE);
+                    } else {
+                        printf("[SERVER] HELLO sent! -> %s", command);
+                    }                
+                }
 
-        switch (msg_udp.type)
-        {
-        case 0: {
-            /* TYPE INT | CODE 0 | BYTE SIGN + INT_32 */
-            uint8_t sign;
-            uint32_t data;
-            memcpy(&sign, buffer + 51, sizeof(uint8_t));
-            memcpy(&data, buffer + 52, sizeof(uint32_t));
-            data = ntohl(data);
-            // printf("sign : %"PRId8" data : %"PRId32"\n", sign, data);
+            }
 
-            if(sign == 1)
-                data -= 2 * data;
-
-            msg_udp.INT = data;
+            /* send to every client */
+            for (int i = 3; i < nr_fd; i++) {
+                if(send(fds[i].fd, command, strlen(command), 0) < 0){
+                    perror("[SERVER] Unable to send command\n");
+                    exit(EXIT_FAILURE);
+                } else {
+                    printf("[SERVER] SOMETHING sent! -> %s", command);
+                }                
+            }
 
 
-            printf("topic %s - tip date %d - payload %d\n", msg_udp.topic, msg_udp.type, msg_udp.INT);
-            mesaje[counter++] = msg_udp;
         }
-            break;
 
-        case 1: {
-            /* TYPE SHORT_INT | CODE 1 | INT_16 */
-            uint16_t short_number;
-            memcpy(&short_number, buffer + 51, sizeof(uint16_t));
-            float result = htons(short_number) / 100.00;
-
-            msg_udp.SHORT_REAL = result;
-
-            printf("topic %s - tip date %d - payload %.3f\n", msg_udp.topic, msg_udp.type, msg_udp.SHORT_REAL);
-            mesaje[counter++] = msg_udp;
-        }
-            break;
-
-        case 2: {
-            /* TYPE FLOAT | CODE 2 | BYTE SIGN + INT_32 + EXPONENT */
-            uint8_t sign;
-            uint8_t exponent;
-            uint32_t data = 0;
-            memcpy(&sign, buffer + 51, sizeof(uint8_t));
-            memcpy(&data, buffer + 52, sizeof(uint32_t));
-            memcpy(&exponent, buffer + 56, sizeof(uint8_t));
-
-            data = ntohl(data);
-            float result = data / pow(10, exponent);
-
-            if (sign == 1)
-                result -= 2 * result;
-
-            msg_udp.FLOAT = result;
-
-            printf("topic %s - tip date %d - payload %.3f\n", msg_udp.topic, msg_udp.type, msg_udp.FLOAT);
-            mesaje[counter++] = msg_udp;
-        }
-            break;
-
-        case 3: {
-            /* TYPE STRING | CODE 3 | STRING */
-            char payload[1500];        
-            // memcpy(msg_udp.payload, buffer + 51, (n - 50));
-            memcpy(payload, buffer + 51, (n - 50));
-            strncpy(msg_udp.payload, payload, (n-50));
+        /* read from UDP */
+        if ((fds[1].revents & POLLIN) != 0) {
             
-            printf("topic %s - tip date %d - payload %s\n", msg_udp.topic, msg_udp.type, msg_udp.payload);
-            mesaje[counter++] = msg_udp;
-        }
-            break;
-        
-        default:
-            perror("message UDP type failed");
-            exit(EXIT_FAILURE);
-            break;
-        }
+            /* clean buffer */
+            memset(buffer, 0, sizeof(buffer));
+
+            /* receive info from socket_udp */
+            socklen_t len = sizeof(socket_udp);
+            int n = recvfrom(sockfd_udp, (char *)buffer, MAXLINE,
+                            MSG_WAITALL, (struct sockaddr *)&socket_udp,
+                            &len);
+            buffer[n] = '\0';
+
+            /* if we received something from UDP client */
+            if(n != -1) {
+
+                /* extract data from buffer */
+                message msg_udp;
+
+                /* copy topic from BUFFER -> MSG_UDP.TOPIC */
+                memcpy(msg_udp.topic, buffer, 50);
+                /* make sure the 51th element is char '\0' for safety */
+                msg_udp.topic[50] = '\0'; 
+                /* copy type from BUFFER -> MSG_UDP.TYPE */
+                memcpy(&msg_udp.type, buffer + 50, sizeof(uint8_t));
+                
+                /* complete payload */
+                switch (msg_udp.type) {
+                case 0: {
+                    /* TYPE INT | CODE 0 | BYTE SIGN + INT_32 */
+                    uint8_t sign;
+                    uint32_t data;
+                    /* copy sign from BUFFER */
+                    memcpy(&sign, buffer + 51, sizeof(uint8_t));
+                    /* copy data from BUFFER */
+                    memcpy(&data, buffer + 52, sizeof(uint32_t));
+                    /* make data from NETWORK -> HOST */
+                    data = ntohl(data);
+
+                    /* check sign */
+                    if(sign == 1)
+                        data -= 2 * data;
+                    /* copy data from BUFFER -> MSG_UDP.INT */
+                    msg_udp.INT = data;
+
+                    printf("topic %s - tip date %d - payload %d\n", msg_udp.topic, msg_udp.type, msg_udp.INT);
+                } break;
+
+                case 1: {
+                    /* TYPE SHORT_INT | CODE 1 | INT_16 */
+                    uint16_t short_number;
+                    memcpy(&short_number, buffer + 51, sizeof(uint16_t));
+                    float result = htons(short_number) / 100.00;
+
+                    msg_udp.SHORT_REAL = result;
+
+                    printf("topic %s - tip date %d - payload %.3f\n", msg_udp.topic, msg_udp.type, msg_udp.SHORT_REAL);
+                } break;
+
+                case 2: {
+                    /* TYPE FLOAT | CODE 2 | BYTE SIGN + INT_32 + EXPONENT */
+                    uint8_t sign;
+                    uint8_t exponent;
+                    uint32_t data = 0;
+                    memcpy(&sign, buffer + 51, sizeof(uint8_t));
+                    memcpy(&data, buffer + 52, sizeof(uint32_t));
+                    memcpy(&exponent, buffer + 56, sizeof(uint8_t));
+
+                    data = ntohl(data);
+                    float result = data / pow(10, exponent);
+
+                    if (sign == 1)
+                        result -= 2 * result;
+
+                    msg_udp.FLOAT = result;
+
+                    printf("topic %s - tip date %d - payload %.3f\n", msg_udp.topic, msg_udp.type, msg_udp.FLOAT);
+                } break;
+
+                case 3: {
+                    /* TYPE STRING | CODE 3 | STRING */
+                    char payload[1500];        
+                    // memcpy(msg_udp.payload, buffer + 51, (n - 50));
+                    memcpy(payload, buffer + 51, (n - 50));
+                    strncpy(msg_udp.payload, payload, (n-50));
+                    
+                    printf("topic %s - tip date %d - payload %s\n", msg_udp.topic, msg_udp.type, msg_udp.payload);
+                } break;
+                
+                default:
+                    perror("message UDP type failed");
+                    exit(EXIT_FAILURE);
+                    break;
+                }
+
+                /* complete client UDP info */
+                strcpy(msg_udp.ip_address,inet_ntoa(socket_udp.sin_addr));
+                sprintf(msg_udp.port,"%d",ntohs(client_addr.sin_port));
+
+                /* add in vector messages */
+                mesaje[counter++] = msg_udp;
+
+
+            }
 
         }
+
+        /* read from TCP */
+        if ((fds[2].revents & POLLIN) != 0) {
 
         /* receive info from socket_tcp */
         client_sock = accept(socket_tcp, (struct sockaddr*)&client_addr, &client_size);
@@ -312,61 +369,59 @@ int main(int argc, char const *argv[]) {
                 exit(EXIT_FAILURE);
             }
 
-            // int flags4 = fcntl(client_sock, F_GETFL, 0);
-            // fcntl(client_sock, F_SETFL, flags4 | O_NONBLOCK);
-
             fds[nr_fd].fd = client_sock;
-            fds[nr_fd].events = POLLIN & POLLOUT;
+            fds[nr_fd].events = POLLIN;
             nr_fd++;
+
+            /* clean buffer */
+            memset(base_data[nr_base_data].client_id, 0, sizeof(base_data[nr_base_data].client_id));
+            /* set client id */
+            strcpy(base_data[nr_base_data].client_id, client_id);
+
+            /* set client file descriptor */
+            base_data[nr_base_data].file_desc.fd = client_sock;
+            base_data[nr_base_data].file_desc.events = POLLIN;
+            nr_base_data++;
             
             // /* close the socket */
             // printf("Client %s disconnected.\n", client_id);
             // close(client_sock);
 
         }
-
-        /* $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ */
-        /* receive from every fd */
-        // char message_tcp[20];
-        // memset(message_tcp, 0, sizeof(message_tcp));
-        // for(int i = 0 ; i < nr_fd ; i++) {
-        //     if(recv(fd[i], message_tcp, sizeof(message_tcp), 0) < 0)
-        //         continue;
-            
-        //     if(message_tcp[0] != '\0' && strcmp(message_tcp, "subscribe\n") == 0) {
-        //             printf("Client sent %s", message_tcp);
-        //     }
-
-        //     if(message_tcp[0] != '\0' && strcmp(message_tcp, "unsubscribe\n") == 0) {
-        //             printf("Client sent %s", message_tcp);
-        //     }
-
-        // }
-        /* $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ */
-
+        }
         
-        for (int i = 0; i < nr_fd; i++) {
+        for (int i = 3; i < nr_fd; i++) {
             if (fds[i].revents & POLLIN) {
-                printf("here 0\n");
-                char message_tcp[20];
+                
+                printf("Yahoo! We have something..\n");
+
+                /* receive from tcp a command */
+                char message_tcp[100];
+                /* clear buffer */
                 memset(message_tcp, 0, sizeof(message_tcp));
+
                 ssize_t n = recv(fds[i].fd, message_tcp, sizeof(message_tcp), 0);
-                printf("here 1\n");
                 if (n > 0) {
                     // process received data
                     // ...
-                printf("here 2\n");
-                if(message_tcp[0] != '\0' && strcmp(message_tcp, "subscribe\n") == 0) {
-                    printf("Client sent %s", message_tcp);
-                }
+                    if(message_tcp[0] != '\0' && strncmp(message_tcp, "subscribe ", 10) == 0) {
+                        // process command
 
-                if(message_tcp[0] != '\0' && strcmp(message_tcp, "unsubscribe\n") == 0) {
-                    printf("Client sent %s", message_tcp);
-                }
+                        char topic[60];
+                        extract_topic(message_tcp, topic);
+                        printf("topic is : %s\n", topic);
 
+
+
+                    }
+
+                    if(message_tcp[0] != '\0' && strncmp(message_tcp, "unsubscribe ", 12) == 0) {
+                        printf("Client sent : %s", message_tcp);
+                    }
 
                 } else if (n == 0) {
                     // client closed connection, close client socket
+                    printf("close socket\n");
                     close(fds[i].fd);
                     fds[i] = fds[--nr_fd];
                     i--;
@@ -379,41 +434,35 @@ int main(int argc, char const *argv[]) {
                 }
             }
         }
-
-
-
         
-        /* receive from every fd */
-        // char message_tcp[20];
-        // memset(message_tcp, 0, sizeof(message_tcp));
-        // for (int i = 0; i < nr_fd; i++) {
-        //     int sock = fd[i];
-        //     ssize_t n = recv(sock, message_tcp, sizeof(message_tcp), 0);
-        //     if (n > 0) {
-        //         // process received data
-        //         // ...
-        //         if(message_tcp[0] != '\0' && strcmp(message_tcp, "subscribe\n") == 0) {
-        //             printf("Client sent %s", message_tcp);
-        //         }
 
-        //         if(message_tcp[0] != '\0' && strcmp(message_tcp, "unsubscribe\n") == 0) {
-        //             printf("Client sent %s", message_tcp);
-        //         }
+    }
 
-        //     } else if (n < 0 && (errno != EWOULDBLOCK && errno != EAGAIN)) {
-        //         // error occurred, close client socket
-        //         perror("recv");
-        //         close(sock);
-        //         fd[i] = fd[--nr_fd];
-        //         i--;
-        //     } else if (n == 0) {
-        //         // client closed connection, close client socket
-        //         close(sock);
-        //         fd[i] = fd[--nr_fd];
-        //         i--;
-        //     }
-        // }
 
+    for(int i = 0 ; i < counter ; i++) {
+        printf("\n ******************************** \n");
+        printf("    Message nr %d ip: %s port %s    \n", i + 1, mesaje[i].ip_address, mesaje[i].port);
+        printf("Topic : %s\n", mesaje[i].topic);
+        printf("Type : %d\n", mesaje[i].type);
+        switch (mesaje[i].type)
+        {
+        case 0:
+            printf("INT %d\n", mesaje[i].INT);
+            break;
+        case 1:
+            printf("SHORT_REAL %f\n", mesaje[i].SHORT_REAL);
+            break;
+        case 2:
+            printf("FLOAT %f\n", mesaje[i].FLOAT);
+            break;
+        case 3:
+            printf("PAYLOAD %s\n", mesaje[i].payload);
+            break;
+        
+        default:
+            printf("Eroare stocare!\n");
+            break;
+        }
 
     }
 

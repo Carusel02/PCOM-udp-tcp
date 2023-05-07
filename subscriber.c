@@ -10,15 +10,19 @@
 #include <inttypes.h>
 #include <stdbool.h>
 #include <fcntl.h>
+#include <poll.h>
 
+struct pollfd fds[100];
+int nr_fd = 0;
 
 int main(int argc, char const *argv[]) {
+
     /* check for nr args */
     if(argc != 4) {
         perror("you dont have right number of args");
         exit(EXIT_FAILURE);
     }
-    
+
     /* set stdout BUFF */
     setvbuf(stdout, NULL, _IONBF, BUFSIZ);
 
@@ -79,38 +83,74 @@ int main(int argc, char const *argv[]) {
     printf("[CLIENT] Server's response: %s\n",server_message);
 
     /* make read from STDIN non-block */
-    char command[20];
-    int flag1 = fcntl(STDIN_FILENO, F_GETFL);
-    fcntl(STDIN_FILENO, F_SETFL, flag1 | O_NONBLOCK);
+    char command[100];
+
+    /* set input from STDIN */
+    fds[nr_fd].fd = STDIN_FILENO;
+    fds[nr_fd].events = POLLIN;
+    nr_fd++;
+
+    /* add socket TCP */
+    fds[nr_fd].fd = socket_desc;
+    fds[nr_fd].events = POLLIN;
+    nr_fd++;
 
     while(true) {
-             
-        /* wait for exit command */
-        fgets(command, 20, stdin);
-        if(command[0] != '\0' && strcmp(command, "exit\n") == 0) {
-            break;
+
+        /* make a poll, wait for readiness notification */
+        int rv = poll(fds, nr_fd, -1);
+        if (rv < 0) {
+            perror("poll");
+            exit(1);
         }
 
-        if(command[0] != '\0' && strcmp(command, "subscribe\n") == 0) {
-            if(send(socket_desc, command, strlen(command), 0) < 0){
-                perror("[CLIENT] Unable to send command\n");
+        /* read from STDIN */
+        if ((fds[0].revents & POLLIN) != 0) {
+            
+            
+            memset(command, 0, sizeof(command));
+            fgets(command, 100, stdin);
+
+            /* exit case */
+            if(command[0] != '\0' && strcmp(command, "exit\n") == 0) {
+                break;
+            }
+            
+            /* subscribe case */
+            if(command[0] != '\0' && strncmp(command, "subscribe ", 10) == 0) {
+                if(send(socket_desc, command, strlen(command), 0) < 0){
+                    perror("[CLIENT] Unable to send command\n");
+                    exit(EXIT_FAILURE);
+                } else {
+                    printf("[CLIENT] Subscribe sent! -> %s", command);
+                    printf("Subscribed to topic.\n");
+                }
+            }
+
+            /* unsubscribe case */
+            if(command[0] != '\0' && strncmp(command, "unsubscribe ", 12) == 0) {
+                if(send(socket_desc, command, strlen(command), 0) < 0){
+                    perror("[CLIENT] Unable to send command\n");
+                    exit(EXIT_FAILURE);
+                } else {
+                    printf("[CLIENT] Unsubscribe sent! -> %s", command);
+                    printf("Unsubscribed from topic.\n");
+                }
+            }
+        }
+
+        /* read from server SOCKET */
+        if ((fds[1].revents & POLLIN) != 0) {
+            /* Receive the response from server */
+            char structure[50];
+            memset(structure, 0 , sizeof(structure));
+            if(recv(socket_desc, structure, sizeof(structure), 0) < 0){
+                perror("[CLIENT] Error while receiving server's msg\n");
                 exit(EXIT_FAILURE);
             } else {
-                printf("[CLIENT] Subscribe sent! -> %s", command);
+                printf("Received from server : %s\n", structure);
             }
-            memset(command, 0, sizeof(command));
         }
-
-        if(command[0] != '\0' && strcmp(command, "unsubscribe\n") == 0) {
-            if(send(socket_desc, command, strlen(command), 0) < 0){
-                perror("[CLIENT] Unable to send command\n");
-                exit(EXIT_FAILURE);
-            } else {
-                printf("[CLIENT] Unsubscribe sent! -> %s", command);
-            }
-            memset(command, 0, sizeof(command));
-        }
-
 
     }
         
