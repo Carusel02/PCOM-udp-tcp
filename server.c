@@ -134,6 +134,10 @@ typedef struct database {
     int key;
     /* quantum time client */
     int quantum_client;
+
+    /* store-forward */
+    int stfd;
+
 } database;
 
 typedef struct client_state {
@@ -160,6 +164,32 @@ void extract_topic(char command[100], char topic[60]) {
 
     token[strlen(token) - 1] = '\0';
     strcpy(topic, token);
+
+}
+
+void extract_topic2(char command[100], char topic[60], int *stfd) {
+    /* clear topic buffer */
+    memset(topic, 0, 60);
+
+    /* extract topic from here */
+    char *token = strtok(command, " ");
+    if(token != NULL)
+        token = strtok(NULL, " ");
+
+    strcpy(topic, token);
+
+    if(token != NULL)
+        token = strtok(NULL, " ");
+    
+    token[strlen(token) - 1] = '\0';
+    sscanf(token, "%"SCNd32"", stfd);
+
+    if(*stfd != 0 && *stfd != 1) {
+        printf("stfd : %d\n", *stfd);
+        perror("wrong subscribe");
+        exit(EXIT_FAILURE);
+    }
+
 }
 
 int main(int argc, char const *argv[]) {   
@@ -324,9 +354,13 @@ int main(int argc, char const *argv[]) {
                         base_data[i - 3].quantum_client = time;
 
                         char topic[60];
+                        int stfd = 0;
                         memset(topic, 0 ,sizeof(topic));
-                        extract_topic(message_tcp, topic);
-                        printf("topic is : %s", topic);
+                        extract_topic2(message_tcp, topic, &stfd);
+                        printf("topic is : %s with stfd : %d\n", topic, stfd);
+
+                        /* set stfd protocol */
+                        base_data[i - 3].stfd = stfd;
 
                         /* make active topic */
                         base_data[i - 3].active[base_data[i - 3].nr_topics] = 1;
@@ -359,6 +393,10 @@ int main(int argc, char const *argv[]) {
 
                     if(message_tcp[0] != '\0' && strcmp(message_tcp, "exit\n") == 0) {
                         // exit command
+
+                        /* save in disconnected mode */
+                        state.disconnected[state.index_disc++] = base_data[i - 3];
+                        printf("\n saved state \n");
 
                         // client closed connection, close client socket
                         printf("Close socket from client %s\n", base_data[i - 3].client_id);
@@ -603,6 +641,8 @@ int main(int argc, char const *argv[]) {
 
             int already_con = 0;
 
+            int disc = 0;
+
             memset(client_id, 0, sizeof(client_id));
             client_size = sizeof(client_addr);
             
@@ -629,6 +669,21 @@ int main(int argc, char const *argv[]) {
 
                     /* close connection */
                     close(client_sock);
+                }
+            }
+
+            /* check id is disconnected */
+            for(int c = 0 ; c < state.index_disc; c++) {
+                printf("client_id : %s disconected : %s apoi newline\n", client_id, state.disconnected[c].client_id);
+                if(strcmp(client_id, state.disconnected[c].client_id) == 0) {
+                    printf("Client %s was disconnected.\n", client_id);
+
+                    /* restore him */
+                    disc = 1;
+                    
+                    base_data[nr_base_data] = state.disconnected[c];
+
+
                 }
             }
 
@@ -660,18 +715,27 @@ int main(int argc, char const *argv[]) {
                 memset(base_data[nr_base_data].client_id, 0, sizeof(base_data[nr_base_data].client_id));
                 /* set client id */
                 strcpy(base_data[nr_base_data].client_id, client_id);
-                /* set client key */
-                base_data[nr_base_data].key = key;
-                /* set client quantum */
-                base_data[nr_base_data].quantum_client = time;
-                key = key + 3;
                 
+                /* remains the same */
+                if(disc == 0) {
+                    /* set client key */
+                    base_data[nr_base_data].key = key;
+                }
 
+                printf("!!!! stfd : %d and time %d \n ", base_data[nr_base_data].stfd, base_data[nr_base_data].quantum_client);
+                if(base_data[nr_base_data].stfd != 1)
+                    /* set client quantum */
+                    base_data[nr_base_data].quantum_client = time;
+                
+                
+                
+                key = key + 3;
                 nr_base_data++;
                 nr_fd++;
 
-
-
+                if(base_data[nr_base_data - 1].stfd == 1) {
+                    goto send_client;
+                }
 
             }
             
@@ -681,11 +745,13 @@ int main(int argc, char const *argv[]) {
         }
         
 
+        send_client: 
+        
         printf(" nr de conectari : %d\n", nr_base_data);
 
         int flag = 0;
         
-        /* send to every client */
+        /* send to every client connected */
         for (int i = 3; i < nr_fd; i++) {
             /* check to see if it s a topic avaible */
 
