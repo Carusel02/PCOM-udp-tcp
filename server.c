@@ -127,6 +127,8 @@ typedef struct database {
     char nr_topics_sub[100][60];
     /* topics number */
     int nr_topics;
+    /*int active topics*/
+    int active[100];
 
     /* unique key */
     int key;
@@ -277,10 +279,10 @@ int main(int argc, char const *argv[]) {
 
 
     /* create array messages */
-    message mesaje[100];
-    for(int i = 0 ; i < 100 ; i++) {
-        for(int j = 0 ; j < 100 ; j++) {
-            mesaje[i].keys[j] = -2;
+    message mesaje[500];
+    for(int i = 0 ; i < 500 ; i++) {
+        for(int j = 0 ; j < 500 ; j++) {
+            mesaje[i].keys[j] = -1;
         }
     }
 
@@ -322,8 +324,14 @@ int main(int argc, char const *argv[]) {
                         base_data[i - 3].quantum_client = time;
 
                         char topic[60];
+                        memset(topic, 0 ,sizeof(topic));
                         extract_topic(message_tcp, topic);
                         printf("topic is : %s", topic);
+
+                        /* make active topic */
+                        base_data[i - 3].active[base_data[i - 3].nr_topics] = 1;
+
+                        /* copy topic in base_data client */
                         strcpy(base_data[i - 3].nr_topics_sub[base_data[i - 3].nr_topics++], topic);
                         
                     }
@@ -332,8 +340,19 @@ int main(int argc, char const *argv[]) {
                         // process command
                         
                         char topic[60];
+                        memset(topic, 0, sizeof(topic));
                         extract_topic(message_tcp, topic);
                         printf("topic is : %s\n", topic);
+
+                        for(int iter = 0 ; iter < base_data[i - 3].nr_topics ; iter++) {
+                            printf("topic : %s si base data topic : %s apoi newline\n",topic, base_data[i -3].nr_topics_sub[iter]);
+                            if(strcmp(topic, base_data[i -3].nr_topics_sub[iter]) == 0) {
+                                base_data[i - 3].active[iter] = 0;
+                                printf("yuhuu\n");
+                            }
+                        }
+
+
 
                         printf("Client %s sent : %s", base_data[i - 3].client_id, message_tcp);
                     }
@@ -683,9 +702,9 @@ int main(int argc, char const *argv[]) {
                     /* flag is 0 */
                     flag = 0;
 
-                    /* we are on the same topic and quantum is right */
+                    /* we are on the same topic and quantum is right and we are subscribed */
                     printf("quantum topic : %d and quantum client %d\n", mesaje[m].quantum_message, base_data[i - 3].quantum_client);
-                    if(strcmp(mesaje[m].topic, base_data[i - 3].nr_topics_sub[total]) == 0 && mesaje[m].quantum_message > base_data[i - 3].quantum_client) {
+                    if(strcmp(mesaje[m].topic, base_data[i - 3].nr_topics_sub[total]) == 0 && mesaje[m].quantum_message > base_data[i - 3].quantum_client && base_data[i - 3].active[total] == 1) {
                         
                         /* iterate through all keys */
                         for(int nr_key = 0 ; nr_key < 10 ; nr_key++) {
