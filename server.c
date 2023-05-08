@@ -18,6 +18,8 @@
 
 #define MAXLINE 1600
 
+int time;
+
 int counter;
 
 int key = 111;
@@ -40,6 +42,9 @@ typedef struct message {
     
     /* all clients that receive the message */
     int keys[100];
+
+    /* quantum message */
+    int quantum_message;
 
 } message;
 
@@ -125,6 +130,8 @@ typedef struct database {
 
     /* unique key */
     int key;
+    /* quantum time client */
+    int quantum_client;
 } database;
 
 typedef struct client_state {
@@ -281,6 +288,8 @@ int main(int argc, char const *argv[]) {
     while (true) {
 
         checkpoint:
+
+
         /* make a poll, wait for readiness notification */
         int rv = poll(fds, nr_fd, -1);
         if (rv < 0) {
@@ -308,6 +317,10 @@ int main(int argc, char const *argv[]) {
                     if(message_tcp[0] != '\0' && strncmp(message_tcp, "subscribe ", 10) == 0) {
                         // process command
 
+                        /* set client subscription time */
+                        time++;
+                        base_data[i - 3].quantum_client = time;
+
                         char topic[60];
                         extract_topic(message_tcp, topic);
                         printf("topic is : %s", topic);
@@ -322,8 +335,6 @@ int main(int argc, char const *argv[]) {
                         extract_topic(message_tcp, topic);
                         printf("topic is : %s\n", topic);
 
-
-                        
                         printf("Client %s sent : %s", base_data[i - 3].client_id, message_tcp);
                     }
 
@@ -454,6 +465,10 @@ int main(int argc, char const *argv[]) {
 
                 /* extract data from buffer */
                 message msg_udp;
+
+                /* put quantum time */
+                time++;
+                msg_udp.quantum_message = time;
                 memset(msg_udp.payload, 0, sizeof(msg_udp.payload));
 
                 /* copy topic from BUFFER -> MSG_UDP.TOPIC */
@@ -600,6 +615,9 @@ int main(int argc, char const *argv[]) {
 
             /* it s a new user */
             if(already_con == 0 ) {
+                
+                time++;
+
                 printf("New client %s connected from %s:%i.\n", client_id, 
                     inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
                 
@@ -625,6 +643,8 @@ int main(int argc, char const *argv[]) {
                 strcpy(base_data[nr_base_data].client_id, client_id);
                 /* set client key */
                 base_data[nr_base_data].key = key;
+                /* set client quantum */
+                base_data[nr_base_data].quantum_client = time;
                 key = key + 3;
                 
 
@@ -663,8 +683,9 @@ int main(int argc, char const *argv[]) {
                     /* flag is 0 */
                     flag = 0;
 
-                    /* we are on the same topic */
-                    if(strcmp(mesaje[m].topic, base_data[i - 3].nr_topics_sub[total]) == 0) {
+                    /* we are on the same topic and quantum is right */
+                    printf("quantum topic : %d and quantum client %d\n", mesaje[m].quantum_message, base_data[i - 3].quantum_client);
+                    if(strcmp(mesaje[m].topic, base_data[i - 3].nr_topics_sub[total]) == 0 && mesaje[m].quantum_message > base_data[i - 3].quantum_client) {
                         
                         /* iterate through all keys */
                         for(int nr_key = 0 ; nr_key < 10 ; nr_key++) {
