@@ -20,6 +20,8 @@
 
 int counter;
 
+int key = 111;
+
 typedef struct message {
     /* topic */
     char topic[60];
@@ -35,9 +37,13 @@ typedef struct message {
     /* client UDP info */
     char ip_address[16];
     char port[6];
+    
+    /* all clients that receive the message */
+    int keys[100];
+
 } message;
 
-typedef struct dblock {
+typedef struct block {
 
 
 
@@ -48,10 +54,24 @@ typedef struct database {
     /* client id */
     char client_id[20];
     /* file descriptor */
-    struct pollfd file_desc;
+    struct pollfd *file_desc;
+    /* index file descriptor */
+    int index_file_desc;
     /* topics subscribed */
     char nr_topics_sub[100][60];
+    /* topics number */
+    int nr_topics;
+
+    /* unique key */
+    int key;
 } database;
+
+typedef struct client_state {
+    /* clients disconnected */
+    database disconnected[100];
+    /* index clients disconnected */
+    int index_disc;
+} client_state;
 
 struct pollfd fds[100];
 int nr_fd = 0;
@@ -67,11 +87,25 @@ void extract_topic(char command[100], char topic[60]) {
     char *token = strtok(command, " ");
     if(token != NULL)
         token = strtok(NULL, " ");
+
+    token[strlen(token) - 1] = '\0';
     strcpy(topic, token);
 }
 
 int main(int argc, char const *argv[]) {   
     
+    int code = 1;
+
+    /* check nr topics */
+    for(int i = 0 ; i < 100 ; i++) {
+        base_data[i].nr_topics = 0;
+    }
+
+    /* server state */
+    client_state state;
+    state.index_disc = 0;
+
+
     /* check for nr args */
     if(argc != 2) {
         perror("you dont have right number of args");
@@ -150,7 +184,7 @@ int main(int argc, char const *argv[]) {
     }
     
     /* Listen for clients */
-    if(listen(socket_tcp, 5) < 0) {
+    if(listen(socket_tcp, 10) < 0) {
         perror("[TCP] Error while listening\n");
         exit(EXIT_FAILURE);
     }
@@ -175,11 +209,17 @@ int main(int argc, char const *argv[]) {
 
 
     /* create array messages */
-    message mesaje[50];
+    message mesaje[100];
+    for(int i = 0 ; i < 100 ; i++) {
+        for(int j = 0 ; j < 100 ; j++) {
+            mesaje[i].keys[j] = -2;
+        }
+    }
 
      /* server loop */
     while (true) {
 
+        checkpoint:
         /* make a poll, wait for readiness notification */
         int rv = poll(fds, nr_fd, -1);
         if (rv < 0) {
@@ -187,39 +227,151 @@ int main(int argc, char const *argv[]) {
             exit(1);
         }
 
+        /* iterate through clients */
+        for (int i = 3; i < nr_fd; i++) {
+            
+            /* we received a command */
+            if (fds[i].revents & POLLIN) {
+                
+                printf("Yahoo! We have something..\n");
+
+                /* receive from tcp a command */
+                char message_tcp[100];
+                /* clear buffer */
+                memset(message_tcp, 0, sizeof(message_tcp));
+
+                ssize_t n = recv(fds[i].fd, message_tcp, sizeof(message_tcp), 0);
+                if (n > 0) {
+                    // process received data
+                    // ...
+                    if(message_tcp[0] != '\0' && strncmp(message_tcp, "subscribe ", 10) == 0) {
+                        // process command
+
+                        char topic[60];
+                        extract_topic(message_tcp, topic);
+                        printf("topic is : %s", topic);
+                        strcpy(base_data[i - 3].nr_topics_sub[base_data[i - 3].nr_topics++], topic);
+                        
+                    }
+
+                    if(message_tcp[0] != '\0' && strncmp(message_tcp, "unsubscribe ", 12) == 0) {
+                        // process command
+                        
+                        char topic[60];
+                        extract_topic(message_tcp, topic);
+                        printf("topic is : %s\n", topic);
+
+
+                        
+                        printf("Client %s sent : %s", base_data[i - 3].client_id, message_tcp);
+                    }
+
+                    if(message_tcp[0] != '\0' && strcmp(message_tcp, "exit\n") == 0) {
+                        // exit command
+
+                        // client closed connection, close client socket
+                        printf("Close socket from client %s\n", base_data[i - 3].client_id);
+                        close(fds[i].fd);
+
+                        /* clear fields */
+                        memset(base_data[i - 3].client_id, 0, sizeof(base_data[i - 3].client_id));
+                        memset(base_data[i - 3].nr_topics_sub, 0, sizeof(base_data[i - 3].nr_topics_sub));
+                        // memset(&base_data[i].key, 0, sizeof(base_data[i].key)); // ??
+                        base_data[i - 3].key = -1;
+                    
+                        /* clear index */
+                        base_data[i - 3] = base_data[--nr_base_data];
+
+                        /* for poll */
+                        fds[i] = fds[--nr_fd];
+                        i--;
+                    }
+
+                } else if (n == 0) {
+                    // client closed connection, close client socket
+
+                    /* save him in disconnected */
+                    state.disconnected[state.index_disc++] = base_data[i - 3]; 
+                   
+
+                    printf("Close socket from client %s\n", base_data[i - 3].client_id);
+                    close(fds[i].fd);
+
+                    /* clear fields */
+                    memset(base_data[i - 3].client_id, 0, sizeof(base_data[i - 3].client_id));
+                    memset(base_data[i - 3].nr_topics_sub, 0, sizeof(base_data[i - 3].nr_topics_sub));
+                    base_data[i - 3].key = -1;
+                    
+                    /* clear index */
+                    base_data[i - 3] = base_data[--nr_base_data];
+
+
+                    /* for poll */
+                    fds[i] = fds[--nr_fd];
+                    i--;
+                    
+                } else {
+                    // error occurred, close client socket
+                    perror("recv");
+                    close(fds[i].fd);
+                    
+
+                    /* save him in disconnected */
+                    state.disconnected[state.index_disc++] = base_data[i - 3]; 
+
+                    /* clear fields */
+                    memset(base_data[i - 3].client_id, 0, sizeof(base_data[i - 3].client_id));
+                    memset(base_data[i - 3].nr_topics_sub, 0, sizeof(base_data[i - 3].nr_topics_sub));
+                    base_data[i - 3].key = -1;
+
+                    base_data[i - 3] = base_data[--nr_base_data];
+
+                    /* for poll */
+                    fds[i] = fds[--nr_fd];
+                    i--;
+                }
+            }
+        }
+
+
         /* read from STDIN */
         if ((fds[0].revents & POLLIN) != 0) {
+            
+            int terminator = 0;
+
+
             /* wait for exit command */
             memset(command, 0, sizeof(command));
             fgets(command, 50, stdin);
             if(command[0] != '\0' && strcmp(command, "exit\n") == 0) {
-                break;
-            }
-
-            /* send hello command to all clients connected */
-            if(command[0] != '\0' && strcmp(command, "hello\n") == 0) {
-
+                terminator = 1;
                 /* send to every client */
                 for (int i = 3; i < nr_fd; i++) {
-                    if(send(fds[i].fd, command, strlen(command), 0) < 0){
+                    if(send(fds[i].fd, &terminator, sizeof(int), 0) < 0){
                         perror("[SERVER] Unable to send command\n");
                         exit(EXIT_FAILURE);
                     } else {
-                        printf("[SERVER] HELLO sent! -> %s", command);
+                        printf("[SERVER] TERMINATOR sent! -> %s", command);
                     }                
                 }
-
+                
+                break;
             }
 
-            /* send to every client */
-            for (int i = 3; i < nr_fd; i++) {
-                if(send(fds[i].fd, command, strlen(command), 0) < 0){
-                    perror("[SERVER] Unable to send command\n");
-                    exit(EXIT_FAILURE);
-                } else {
-                    printf("[SERVER] SOMETHING sent! -> %s", command);
-                }                
-            }
+            // /* send hello command to all clients connected */
+            // if(command[0] != '\0' && strcmp(command, "hello\n") == 0) {
+
+            //     /* send to every client */
+            //     for (int i = 0; i < nr_base_data; i++) {
+            //         if(send(base_data[i].file_desc->fd, command, strlen(command), 0) < 0){
+            //             perror("[SERVER] Unable to send command\n");
+            //             exit(EXIT_FAILURE);
+            //         } else {
+            //             printf("[SERVER] HELLO sent! -> %s", command);
+            //         }                
+            //     }
+
+            // }
 
 
         }
@@ -324,6 +476,9 @@ int main(int argc, char const *argv[]) {
                 sprintf(msg_udp.port,"%d",ntohs(client_addr.sin_port));
 
                 /* add in vector messages */
+                for(int kk = 0 ; kk < 100 ; kk++) {
+                    msg_udp.keys[kk] = -1;
+                }
                 mesaje[counter++] = msg_udp;
 
 
@@ -349,6 +504,9 @@ int main(int argc, char const *argv[]) {
         } else {
             // handle new connection on newfd
             // ...
+
+            int already_con = 0;
+
             memset(client_id, 0, sizeof(client_id));
             client_size = sizeof(client_addr);
             
@@ -358,84 +516,139 @@ int main(int argc, char const *argv[]) {
                 exit(EXIT_FAILURE);
             }
 
-            printf("New client %s connected from %s:%i.\n", client_id, 
-                inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
-            
-            /* Write a response to the client */
-            strcpy(server_message, "This is the server's message.");
-            
-            if (send(client_sock, server_message, strlen(server_message), 0) < 0) {
-                perror("[TCP] Can't send while client \n");
-                exit(EXIT_FAILURE);
-            }
 
-            fds[nr_fd].fd = client_sock;
-            fds[nr_fd].events = POLLIN;
-            nr_fd++;
-
-            /* clean buffer */
-            memset(base_data[nr_base_data].client_id, 0, sizeof(base_data[nr_base_data].client_id));
-            /* set client id */
-            strcpy(base_data[nr_base_data].client_id, client_id);
-
-            /* set client file descriptor */
-            base_data[nr_base_data].file_desc.fd = client_sock;
-            base_data[nr_base_data].file_desc.events = POLLIN;
-            nr_base_data++;
-            
-            // /* close the socket */
-            // printf("Client %s disconnected.\n", client_id);
-            // close(client_sock);
-
-        }
-        }
-        
-        for (int i = 3; i < nr_fd; i++) {
-            if (fds[i].revents & POLLIN) {
-                
-                printf("Yahoo! We have something..\n");
-
-                /* receive from tcp a command */
-                char message_tcp[100];
-                /* clear buffer */
-                memset(message_tcp, 0, sizeof(message_tcp));
-
-                ssize_t n = recv(fds[i].fd, message_tcp, sizeof(message_tcp), 0);
-                if (n > 0) {
-                    // process received data
-                    // ...
-                    if(message_tcp[0] != '\0' && strncmp(message_tcp, "subscribe ", 10) == 0) {
-                        // process command
-
-                        char topic[60];
-                        extract_topic(message_tcp, topic);
-                        printf("topic is : %s\n", topic);
-
-
-
+            /* check id is already connected */
+            for(int c = 0 ; c < nr_base_data ; c++) {
+                // printf("client_id : %s base_data : %s\n", client_id, base_data[c].client_id);
+                if(strcmp(client_id, base_data[c].client_id) == 0) {
+                    printf("Client %s already connected.\n", client_id);
+                    already_con = 1;
+                    
+                    /* send exit code to client */
+                    code = 0;
+                    if (send(client_sock, &code, sizeof(code), 0) < 0) {
+                        perror("[TCP] Can't send while client code 0 \n");
+                        exit(EXIT_FAILURE);
                     }
 
-                    if(message_tcp[0] != '\0' && strncmp(message_tcp, "unsubscribe ", 12) == 0) {
-                        printf("Client sent : %s", message_tcp);
-                    }
-
-                } else if (n == 0) {
-                    // client closed connection, close client socket
-                    printf("close socket\n");
-                    close(fds[i].fd);
-                    fds[i] = fds[--nr_fd];
-                    i--;
-                } else {
-                    // error occurred, close client socket
-                    perror("recv");
-                    close(fds[i].fd);
-                    fds[i] = fds[--nr_fd];
-                    i--;
+                    /* close connection */
+                    close(client_sock);
                 }
             }
+
+            /* it s a new user */
+            if(already_con == 0 ) {
+                printf("New client %s connected from %s:%i.\n", client_id, 
+                    inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
+                
+                /* Write a response to the client */
+                strcpy(server_message, "This is the server's message.");
+                code = 1;
+
+
+                if (send(client_sock, &code, sizeof(code), 0) < 0) {
+                    perror("[TCP] Can't send while client code 1 \n");
+                    exit(EXIT_FAILURE);
+                }
+
+                fds[nr_fd].fd = client_sock;
+                fds[nr_fd].events = POLLIN;
+                /* set client file descriptor index */
+                base_data[nr_base_data].index_file_desc = nr_fd;
+
+
+                /* clean buffer */
+                memset(base_data[nr_base_data].client_id, 0, sizeof(base_data[nr_base_data].client_id));
+                /* set client id */
+                strcpy(base_data[nr_base_data].client_id, client_id);
+                /* set client key */
+                base_data[nr_base_data].key = key;
+                key = key + 3;
+                
+
+                nr_base_data++;
+                nr_fd++;
+
+
+
+
+            }
+            
+        }
+
+            goto checkpoint;
         }
         
 
+        printf(" nr de conectari : %d\n", nr_base_data);
+
+        int flag = 0;
+        
+        /* send to every client */
+        for (int i = 3; i < nr_fd; i++) {
+            /* check to see if it s a topic avaible */
+
+            /* nr of all message topics */
+            for(int m = 0 ; m < counter ; m++) {
+                                
+
+                /* nr of topics our client is subscribed */
+                for(int total = 0 ; total < base_data[i - 3].nr_topics ; total++) {
+                    
+                    /* compare topics */
+                    printf("\ncompare %s = %s acum backslash n \n", mesaje[m].topic, base_data[i - 3].nr_topics_sub[total]);
+
+                    /* flag is 0 */
+                    flag = 0;
+
+                    /* we are on the same topic */
+                    if(strcmp(mesaje[m].topic, base_data[i - 3].nr_topics_sub[total]) == 0) {
+                        
+                        /* iterate through all keys */
+                        for(int nr_key = 0 ; nr_key < 10 ; nr_key++) {
+                            
+                            /* we send this message before to this client */
+                            printf("\nmesaje key %d base_data %d key\n", mesaje[m].keys[nr_key], base_data[i - 3].key);
+                            if(mesaje[m].keys[nr_key] == base_data[i - 3].key) {
+                                /* go to the next message */
+                                printf("\n WARN !! we send this before! \n");
+                                flag = 1;
+                                break;
+                            }
+
+                            /* if is not a key, put a key ! */
+                            if(mesaje[m].keys[nr_key] == -1) {
+                                printf("\n PUT A KEY HERE! \n");
+                                mesaje[m].keys[nr_key] = base_data[i - 3].key;
+                                break;
+                            }
+                        }
+                        
+                        /* go to the next message */
+                        if(flag == 1)
+                            continue;
+                        
+                        // send the topic
+                        printf("ar trebui sa se trimita...\n");
+
+                        if(send(fds[i].fd, mesaje[m].topic, sizeof(mesaje[m].topic), 0) < 0){
+                            perror("[SERVER] Unable to send topic\n");
+                            exit(EXIT_FAILURE);
+                        } else {
+                            printf("[SERVER] TOPIC sent! -> %s", command);
+
+                        }  
+                    }
+
+                }
+
+            }
+
+            
+                         
+        }
+
+        
     }
 
 
@@ -444,6 +657,7 @@ int main(int argc, char const *argv[]) {
         printf("    Message nr %d ip: %s port %s    \n", i + 1, mesaje[i].ip_address, mesaje[i].port);
         printf("Topic : %s\n", mesaje[i].topic);
         printf("Type : %d\n", mesaje[i].type);
+        printf("Key : %d\n", mesaje[i].keys[0]);
         switch (mesaje[i].type)
         {
         case 0:
@@ -466,12 +680,15 @@ int main(int argc, char const *argv[]) {
 
     }
 
-    for(int i = 0 ; i < nr_fd ; i++) {
+    for(int i = 0 ; i < nr_base_data ; i++) {
         /* close the socket */
-        printf("Client %s disconnected.\n", client_id);
+        printf("Client %s disconnected.\n", base_data[i].client_id);
         close(client_sock);
     }
+
+    printf("socket_tcp disconnected\n");
     close(socket_tcp);
+    printf("socket_udp disconnected\n");
     close(sockfd_udp);
     return 0;
 }

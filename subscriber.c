@@ -45,6 +45,8 @@ int main(int argc, char const *argv[]) {
     int socket_desc;
     struct sockaddr_in server_addr;
     char server_message[2000], client_message[2000];
+
+    int code;
     
     /* Clean buffers and structures*/
     memset(server_message,'\0',sizeof(server_message));
@@ -70,17 +72,22 @@ int main(int argc, char const *argv[]) {
     }
     
     /* Send the message to server */
-    if(send(socket_desc, ID_CLIENT, strlen(ID_CLIENT), 0) < 0){
+    if(send(socket_desc, ID_CLIENT, sizeof(ID_CLIENT), 0) < 0){
         perror("[CLIENT] Unable to send ID_CLIENT\n");
         exit(EXIT_FAILURE);
     }
     
     /* Receive the response from server */
-    if(recv(socket_desc, server_message, sizeof(server_message), 0) < 0){
-        printf("[CLIENT] Error while receiving server's msg\n");
-        return -1;
+    if(recv(socket_desc, &code, sizeof(code), 0) < 0){
+        perror("[CLIENT] Error while receiving server's msg\n");
+        exit(EXIT_FAILURE);
     }
-    printf("[CLIENT] Server's response: %s\n",server_message);
+    printf("[CLIENT] Server's response: %d\n", code);
+
+    if(code == 0) {
+        printf("Disconnect\n");
+        return 0;
+    }
 
     /* make read from STDIN non-block */
     char command[100];
@@ -113,6 +120,12 @@ int main(int argc, char const *argv[]) {
 
             /* exit case */
             if(command[0] != '\0' && strcmp(command, "exit\n") == 0) {
+                if(send(socket_desc, command, strlen(command), 0) < 0){
+                    perror("[CLIENT] Unable to send command\n");
+                    exit(EXIT_FAILURE);
+                } else {
+                    printf("[CLIENT] Subscribe sent! -> %s", command);
+                }
                 break;
             }
             
@@ -142,19 +155,23 @@ int main(int argc, char const *argv[]) {
         /* read from server SOCKET */
         if ((fds[1].revents & POLLIN) != 0) {
             /* Receive the response from server */
-            char structure[50];
-            memset(structure, 0 , sizeof(structure));
-            if(recv(socket_desc, structure, sizeof(structure), 0) < 0){
+            int terminator;
+
+            if(recv(socket_desc, &terminator, sizeof(int), 0) < 0){
                 perror("[CLIENT] Error while receiving server's msg\n");
                 exit(EXIT_FAILURE);
             } else {
-                printf("Received from server : %s\n", structure);
+                printf("Received from server: %d\n", terminator);
+                if(terminator == 1) {
+                    break;
+                }
             }
         }
 
     }
         
     /* Close the socket */
+    printf("[CLIENT] exit\n");
     close(socket_desc);
     
     return 0;
