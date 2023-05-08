@@ -29,7 +29,7 @@ typedef struct message {
     unsigned int type;
 
     /* payload */
-    char payload[1500];
+    char payload[1600];
     uint32_t INT;
     float SHORT_REAL;
     float FLOAT;
@@ -45,10 +45,71 @@ typedef struct message {
 
 typedef struct block {
 
-
-
+    int instruction;
+    int size;
+    int encode_type;
 
 } block;
+
+
+typedef struct encode0 {
+
+    /* all have topics */
+    char topic[60];
+    unsigned int type;
+    uint32_t INT;
+
+    
+    /* client UDP info */
+    char ip_address[16];
+    char port[6];
+
+} encode0;
+
+typedef struct encode1 {
+
+    /* all have topics */
+    char topic[60];
+    unsigned int type;
+    float SHORT_REAL;
+    
+    
+    /* client UDP info */
+    char ip_address[16];
+    char port[6];
+
+
+} encode1;
+
+typedef struct encode2 {
+
+    /* all have topics */
+    char topic[60];
+    unsigned int type;
+    float FLOAT;
+
+    /* client UDP info */
+    char ip_address[16];
+    char port[6];
+
+
+} encode2;
+
+typedef struct encode3 {
+
+    /* all have topics */
+    char topic[60];
+    unsigned int type;
+
+    /* client UDP info */
+    char ip_address[16];
+    char port[6];
+
+    /* modify this */
+    char payload[1600];
+
+
+} encode3;
 
 typedef struct database {
     /* client id */
@@ -337,21 +398,20 @@ int main(int argc, char const *argv[]) {
         /* read from STDIN */
         if ((fds[0].revents & POLLIN) != 0) {
             
-            int terminator = 0;
-
-
             /* wait for exit command */
             memset(command, 0, sizeof(command));
             fgets(command, 50, stdin);
             if(command[0] != '\0' && strcmp(command, "exit\n") == 0) {
-                terminator = 1;
+                block bloc;
+                bloc.instruction = -1;
+                bloc.size = 0;
                 /* send to every client */
                 for (int i = 3; i < nr_fd; i++) {
-                    if(send(fds[i].fd, &terminator, sizeof(int), 0) < 0){
+                    if(send(fds[i].fd, &bloc, sizeof(int), 0) < 0){
                         perror("[SERVER] Unable to send command\n");
                         exit(EXIT_FAILURE);
                     } else {
-                        printf("[SERVER] TERMINATOR sent! -> %s", command);
+                        printf("[SERVER] TERMINATOR sent! -> %d", bloc.instruction);
                     }                
                 }
                 
@@ -394,6 +454,7 @@ int main(int argc, char const *argv[]) {
 
                 /* extract data from buffer */
                 message msg_udp;
+                memset(msg_udp.payload, 0, sizeof(msg_udp.payload));
 
                 /* copy topic from BUFFER -> MSG_UDP.TOPIC */
                 memcpy(msg_udp.topic, buffer, 50);
@@ -457,7 +518,8 @@ int main(int argc, char const *argv[]) {
 
                 case 3: {
                     /* TYPE STRING | CODE 3 | STRING */
-                    char payload[1500];        
+                    char payload[1600];
+                    memset(payload, 0, sizeof(payload));        
                     // memcpy(msg_udp.payload, buffer + 51, (n - 50));
                     memcpy(payload, buffer + 51, (n - 50));
                     strncpy(msg_udp.payload, payload, (n-50));
@@ -628,16 +690,144 @@ int main(int argc, char const *argv[]) {
                         if(flag == 1)
                             continue;
                         
-                        // send the topic
-                        printf("ar trebui sa se trimita...\n");
+                        // send the topic WITH PROTOCOL
 
-                        if(send(fds[i].fd, mesaje[m].topic, sizeof(mesaje[m].topic), 0) < 0){
-                            perror("[SERVER] Unable to send topic\n");
+                        block bloc;
+                        bloc.instruction = 1;
+                        bloc.size = 0;
+
+                        /* parse message */
+                        switch (mesaje[m].type) {
+                        
+                        case 0: {
+                            /* BUILD encode0 */
+                            encode0 encode;
+                            strcpy(encode.topic, mesaje[m].topic);
+                            strcpy(encode.ip_address, mesaje[m].ip_address);
+                            strcpy(encode.port, mesaje[m].port);
+                            encode.type = 0;
+                            encode.INT = mesaje[m].INT;
+                            bloc.size = sizeof(encode0);
+                            bloc.encode_type = 0;
+                            /* send data block first */
+                            if(send(fds[i].fd, &bloc, sizeof(block), 0) < 0){
+                                perror("[SERVER] Unable to send block\n");
+                                exit(EXIT_FAILURE);
+                            } else {
+                                printf("[SERVER] block sended \n");
+
+                            }  
+                            
+                            /* SEND */
+                            if(send(fds[i].fd, &encode, bloc.size, 0) < 0){
+                                perror("[SERVER] Unable to send topic\n");
+                                exit(EXIT_FAILURE);
+                            } else {
+                                printf("[SERVER] TOPIC sent! -> %s\n", mesaje[m].topic);
+
+                            }  
+                        }   break;
+
+                        case 1: {
+                            /* BUILD encode1 */
+                            encode1 encode;
+                            strcpy(encode.topic, mesaje[m].topic);
+                            strcpy(encode.ip_address, mesaje[m].ip_address);
+                            strcpy(encode.port, mesaje[m].port);
+                            encode.type = 1;
+                            encode.SHORT_REAL = mesaje[m].SHORT_REAL;
+                            bloc.size = sizeof(encode1);
+                            bloc.encode_type = 1;
+
+                            /* send data block first */
+                            if(send(fds[i].fd, &bloc, sizeof(block), 0) < 0){
+                                perror("[SERVER] Unable to send block\n");
+                                exit(EXIT_FAILURE);
+                            } else {
+                                printf("[SERVER] block sended \n");
+
+                            }  
+                            
+                            if(send(fds[i].fd, &encode, bloc.size, 0) < 0){
+                                perror("[SERVER] Unable to send topic\n");
+                                exit(EXIT_FAILURE);
+                            } else {
+                                printf("[SERVER] TOPIC sent! -> %s", mesaje[m].topic);
+
+                            }  
+                        }   break;
+
+
+                        case 2: {
+                            /* BUILD encode2 */
+                            encode2 encode;
+                            strcpy(encode.topic, mesaje[m].topic);
+                            strcpy(encode.ip_address, mesaje[m].ip_address);
+                            strcpy(encode.port, mesaje[m].port);
+                            encode.type = 2;
+                            encode.FLOAT = mesaje[m].FLOAT;
+                            bloc.size = sizeof(encode2);
+                            bloc.encode_type = 2;
+
+                            /* send data block first */
+                            if(send(fds[i].fd, &bloc, sizeof(block), 0) < 0){
+                                perror("[SERVER] Unable to send block\n");
+                                exit(EXIT_FAILURE);
+                            } else {
+                                printf("[SERVER] block sended \n");
+
+                            }
+
+                            if(send(fds[i].fd, &encode, bloc.size, 0) < 0){
+                                perror("[SERVER] Unable to send topic\n");
+                                exit(EXIT_FAILURE);
+                            } else {
+                                printf("[SERVER] TOPIC sent! -> %s", mesaje[m].topic);
+
+                            }  
+                        }   break;
+
+
+                        case 3: {
+                            /* BUILD encode3 */
+                            encode3 encode;
+                            memset(encode.topic, 0 , sizeof(encode.topic));
+                            memset(encode.ip_address, 0, sizeof(encode.ip_address));
+                            memset(encode.port, 0, sizeof(encode.port));
+                            strcpy(encode.topic, mesaje[m].topic);
+                            strcpy(encode.ip_address, mesaje[m].ip_address);
+                            strcpy(encode.port, mesaje[m].port);
+                            encode.type = 3;
+                            strncpy(encode.payload, mesaje[m].payload, strlen(mesaje[m].payload) + 1);
+                            bloc.size = sizeof(encode.topic) + sizeof(encode.port) + sizeof(encode.ip_address) + strlen(mesaje[m].payload) + 10;
+                            bloc.encode_type = 3;
+
+                            /* send data block first */
+                            if(send(fds[i].fd, &bloc, sizeof(block), 0) < 0){
+                                perror("[SERVER] Unable to send block\n");
+                                exit(EXIT_FAILURE);
+                            } else {
+                                printf("[SERVER] block sended \n");
+
+                            }
+                            
+                            /* SEND */
+                            if(send(fds[i].fd, &encode, bloc.size, 0) < 0){
+                                perror("[SERVER] Unable to send topic\n");
+                                exit(EXIT_FAILURE);
+                            } else {
+                                printf("[SERVER] TOPIC sent! -> %s", mesaje[m].topic);
+
+                            }  
+                        }   break;
+                        
+                        default:
+                            perror("parse message failed :(");
                             exit(EXIT_FAILURE);
-                        } else {
-                            printf("[SERVER] TOPIC sent! -> %s", command);
+                            break;
+                        }
 
-                        }  
+
                     }
 
                 }

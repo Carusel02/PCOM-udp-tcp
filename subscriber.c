@@ -15,6 +15,72 @@
 struct pollfd fds[100];
 int nr_fd = 0;
 
+typedef struct block {
+    
+    int instruction;
+    int size;
+    int encode_type;
+
+} block;
+
+typedef struct encode0 {
+
+    /* all have topics */
+    char topic[60];
+    unsigned int type;
+    uint32_t INT;
+
+    
+    /* client UDP info */
+    char ip_address[16];
+    char port[6];
+
+} encode0;
+
+typedef struct encode1 {
+
+    /* all have topics */
+    char topic[60];
+    unsigned int type;
+    float SHORT_REAL;
+    
+    
+    /* client UDP info */
+    char ip_address[16];
+    char port[6];
+
+
+} encode1;
+
+typedef struct encode2 {
+
+    /* all have topics */
+    char topic[60];
+    unsigned int type;
+    float FLOAT;
+
+    /* client UDP info */
+    char ip_address[16];
+    char port[6];
+
+
+} encode2;
+
+typedef struct encode3 {
+
+    /* all have topics */
+    char topic[60];
+    unsigned int type;
+
+    /* client UDP info */
+    char ip_address[16];
+    char port[6];
+
+    /* modify this */
+    char payload[1600];
+
+} encode3;
+
 int main(int argc, char const *argv[]) {
 
     /* check for nr args */
@@ -155,21 +221,101 @@ int main(int argc, char const *argv[]) {
         /* read from server SOCKET */
         if ((fds[1].revents & POLLIN) != 0) {
             /* Receive the response from server */
-            int terminator;
+            block bloc;
 
-            if(recv(socket_desc, &terminator, sizeof(int), 0) < 0){
+            if(recv(socket_desc, &bloc, sizeof(block), 0) < 0){
                 perror("[CLIENT] Error while receiving server's msg\n");
                 exit(EXIT_FAILURE);
             } else {
-                printf("Received from server: %d\n", terminator);
-                if(terminator == 1) {
+                printf("Received from server: %d\n", bloc.instruction);
+                
+                switch (bloc.instruction) {
+                /* disconnect client */
+                case -1:
+                    goto disconnect;
+                break;
+
+                /* receive a send */
+                case 1: {
+                    /* receive data */
+                    
+                    /* encode0 */
+                    if(bloc.encode_type == 0) {
+                        
+                        encode0 encode;
+                        memset(&encode, 0, sizeof(encode0));
+
+                        if(recv(socket_desc, &encode, bloc.size, 0) < 0){
+                            perror("[CLIENT] Error while receiving encode's 0 msg\n");
+                            exit(EXIT_FAILURE);
+                        } else {
+                            printf("%s:%s - %s - INT - %d\n", encode.ip_address, encode.port, encode.topic, encode.INT);
+                        }
+
+                    }
+
+                    /* encode1 */
+                    if(bloc.encode_type == 1) {
+                        
+                        encode1 encode;
+                        memset(&encode, 0, sizeof(encode1));
+
+                        if(recv(socket_desc, &encode, bloc.size, 0) < 0){
+                            perror("[CLIENT] Error while receiving encode's 1 msg\n");
+                            exit(EXIT_FAILURE);
+                        } else {
+                            printf("%s:%s - %s - SHORT_REAL - %.2f\n", encode.ip_address, encode.port, encode.topic, encode.SHORT_REAL);
+                        }
+
+                    }
+
+                    /* encode2 */
+                    if(bloc.encode_type == 2) {
+                        
+                        encode2 encode;
+                        memset(&encode, 0, sizeof(encode2));
+
+                        if(recv(socket_desc, &encode, bloc.size, 0) < 0){
+                            perror("[CLIENT] Error while receiving encode's 2 msg\n");
+                            exit(EXIT_FAILURE);
+                        } else {
+                            printf("%s:%s - %s - FLOAT - %.2f\n", encode.ip_address, encode.port, encode.topic, encode.FLOAT);
+                        }
+
+                    }
+
+                    /* encode3 */
+                    if(bloc.encode_type == 3) {
+                        
+                        encode3 encode;
+                        memset(&encode, 0, sizeof(encode3));
+
+                        if(recv(socket_desc, &encode, bloc.size, 0) < 0){
+                            perror("[CLIENT] Error while receiving encode's msg\n");
+                            exit(EXIT_FAILURE);
+                        } else {
+                            printf("%s:%s - %s - STRING - %s\n", encode.ip_address, encode.port, encode.topic, encode.payload);
+                        }
+
+                    }
+
+
+
+                } break;
+                
+                default:
+                    perror("[CLIENT] receive error on bloc instruction");
+                    exit(EXIT_FAILURE);
                     break;
                 }
+
+
             }
         }
 
     }
-        
+
+    disconnect:   
     /* Close the socket */
     printf("[CLIENT] exit\n");
     close(socket_desc);
