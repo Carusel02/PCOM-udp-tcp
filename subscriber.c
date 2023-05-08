@@ -11,6 +11,7 @@
 #include <stdbool.h>
 #include <fcntl.h>
 #include <poll.h>
+#include <netinet/tcp.h>
 
 struct pollfd fds[100];
 int nr_fd = 0;
@@ -125,6 +126,8 @@ int main(int argc, char const *argv[]) {
         perror("[CLIENT] Unable to create socket\n");
         exit(EXIT_FAILURE);
     }
+    int flagul = 1;
+    setsockopt(socket_desc, IPPROTO_TCP, TCP_NODELAY, (char *)&flagul, sizeof(int));
     
     /* Set port and IP the same as server-side */
     server_addr.sin_family = AF_INET;
@@ -148,7 +151,7 @@ int main(int argc, char const *argv[]) {
         perror("[CLIENT] Error while receiving server's msg\n");
         exit(EXIT_FAILURE);
     }
-    printf("[CLIENT] Server's response: %d\n", code);
+    // printf("[CLIENT] Server's response: %d\n", code);
 
     if(code == 0) {
         printf("Disconnect\n");
@@ -190,7 +193,7 @@ int main(int argc, char const *argv[]) {
                     perror("[CLIENT] Unable to send command\n");
                     exit(EXIT_FAILURE);
                 } else {
-                    printf("[CLIENT] Subscribe sent! -> %s", command);
+                //    printf("[CLIENT] Subscribe sent! -> %s", command);
                 }
                 break;
             }
@@ -201,7 +204,7 @@ int main(int argc, char const *argv[]) {
                     perror("[CLIENT] Unable to send command\n");
                     exit(EXIT_FAILURE);
                 } else {
-                    printf("[CLIENT] Subscribe sent! -> %s", command);
+                //    printf("[CLIENT] Subscribe sent! -> %s", command);
                     printf("Subscribed to topic.\n");
                 }
             }
@@ -212,7 +215,7 @@ int main(int argc, char const *argv[]) {
                     perror("[CLIENT] Unable to send command\n");
                     exit(EXIT_FAILURE);
                 } else {
-                    printf("[CLIENT] Unsubscribe sent! -> %s", command);
+                //   printf("[CLIENT] Unsubscribe sent! -> %s", command);
                     printf("Unsubscribed from topic.\n");
                 }
             }
@@ -227,7 +230,7 @@ int main(int argc, char const *argv[]) {
                 perror("[CLIENT] Error while receiving server's msg\n");
                 exit(EXIT_FAILURE);
             } else {
-                printf("Received from server: %d\n", bloc.instruction);
+            //    printf("Received from server: %d\n", bloc.instruction);
                 
                 switch (bloc.instruction) {
                 /* disconnect client */
@@ -279,7 +282,7 @@ int main(int argc, char const *argv[]) {
                             perror("[CLIENT] Error while receiving encode's 2 msg\n");
                             exit(EXIT_FAILURE);
                         } else {
-                            printf("%s:%s - %s - FLOAT - %.2f\n", encode.ip_address, encode.port, encode.topic, encode.FLOAT);
+                            printf("%s:%s - %s - FLOAT - %.4f\n", encode.ip_address, encode.port, encode.topic, encode.FLOAT);
                         }
 
                     }
@@ -317,7 +320,7 @@ int main(int argc, char const *argv[]) {
 
     disconnect:   
     /* Close the socket */
-    printf("[CLIENT] exit\n");
+    // printf("[CLIENT] exit\n");
     close(socket_desc);
     
     return 0;

@@ -15,6 +15,7 @@
 #include <math.h>
 #include <errno.h>
 #include <poll.h>
+#include <netinet/tcp.h>
 
 #define MAXLINE 1600
 
@@ -185,7 +186,7 @@ void extract_topic2(char command[100], char topic[60], int *stfd) {
     sscanf(token, "%"SCNd32"", stfd);
 
     if(*stfd != 0 && *stfd != 1) {
-        printf("stfd : %d\n", *stfd);
+        // printf("stfd : %d\n", *stfd);
         perror("wrong subscribe");
         exit(EXIT_FAILURE);
     }
@@ -196,15 +197,9 @@ int main(int argc, char const *argv[]) {
     
     int code = 1;
 
-    /* check nr topics */
-    for(int i = 0 ; i < 100 ; i++) {
-        base_data[i].nr_topics = 0;
-    }
-
     /* server state */
     client_state state;
     state.index_disc = 0;
-
 
     /* check for nr args */
     if(argc != 2) {
@@ -235,6 +230,9 @@ int main(int argc, char const *argv[]) {
         perror("[UDP] socket creation failed");
         exit(EXIT_FAILURE);
     }
+    
+    int flagul = 1;
+    setsockopt(sockfd_udp, IPPROTO_TCP, TCP_NODELAY, (char *)&flagul, sizeof(int));
 
     /* set all fields with 0 */
     memset(&servaddr, 0, sizeof(servaddr));
@@ -271,6 +269,7 @@ int main(int argc, char const *argv[]) {
         perror("[TCP] Error while creating socket\n");
         exit(EXIT_FAILURE);
     }
+    setsockopt(socket_tcp, IPPROTO_TCP, TCP_NODELAY, (char *)&flagul, sizeof(int));
     
     /* Set port and IP that we'll be listening for, any other IP_SRC or port will be dropped */
     server_addr.sin_family = AF_INET;
@@ -310,11 +309,6 @@ int main(int argc, char const *argv[]) {
 
     /* create array messages */
     message mesaje[500];
-    for(int i = 0 ; i < 500 ; i++) {
-        for(int j = 0 ; j < 500 ; j++) {
-            mesaje[i].keys[j] = -1;
-        }
-    }
 
      /* server loop */
     while (true) {
@@ -335,7 +329,7 @@ int main(int argc, char const *argv[]) {
             /* we received a command */
             if (fds[i].revents & POLLIN) {
                 
-                printf("Yahoo! We have something..\n");
+                // printf("Yahoo! We have something..\n");
 
                 /* receive from tcp a command */
                 char message_tcp[100];
@@ -357,7 +351,7 @@ int main(int argc, char const *argv[]) {
                         int stfd = 0;
                         memset(topic, 0 ,sizeof(topic));
                         extract_topic2(message_tcp, topic, &stfd);
-                        printf("topic is : %s with stfd : %d\n", topic, stfd);
+                        // printf("topic is : %s with stfd : %d\n", topic, stfd);
 
                         /* set stfd protocol */
                         base_data[i - 3].stfd = stfd;
@@ -376,30 +370,30 @@ int main(int argc, char const *argv[]) {
                         char topic[60];
                         memset(topic, 0, sizeof(topic));
                         extract_topic(message_tcp, topic);
-                        printf("topic is : %s\n", topic);
+                        // printf("topic is : %s\n", topic);
 
                         for(int iter = 0 ; iter < base_data[i - 3].nr_topics ; iter++) {
-                            printf("topic : %s si base data topic : %s apoi newline\n",topic, base_data[i -3].nr_topics_sub[iter]);
+                            // printf("topic : %s si base data topic : %s apoi newline\n",topic, base_data[i -3].nr_topics_sub[iter]);
                             if(strcmp(topic, base_data[i -3].nr_topics_sub[iter]) == 0) {
                                 base_data[i - 3].active[iter] = 0;
-                                printf("yuhuu\n");
+                               //  printf("yuhuu\n");
                             }
                         }
 
 
 
-                        printf("Client %s sent : %s", base_data[i - 3].client_id, message_tcp);
+                       // printf("Client %s sent : %s", base_data[i - 3].client_id, message_tcp);
                     }
 
                     if(message_tcp[0] != '\0' && strcmp(message_tcp, "exit\n") == 0) {
                         // exit command
-
+                        printf("Client %s disconnected.\n", base_data[i - 3].client_id);
                         /* save in disconnected mode */
                         state.disconnected[state.index_disc++] = base_data[i - 3];
-                        printf("\n saved state \n");
+                        // printf("\n saved state \n");
 
                         // client closed connection, close client socket
-                        printf("Close socket from client %s\n", base_data[i - 3].client_id);
+                        // printf("Close socket from client %s\n", base_data[i - 3].client_id);
                         close(fds[i].fd);
 
                         /* clear fields */
@@ -418,12 +412,12 @@ int main(int argc, char const *argv[]) {
 
                 } else if (n == 0) {
                     // client closed connection, close client socket
-
+                    printf("Client %s disconnected.\n", base_data[i - 3].client_id);
                     /* save him in disconnected */
                     state.disconnected[state.index_disc++] = base_data[i - 3]; 
                    
 
-                    printf("Close socket from client %s\n", base_data[i - 3].client_id);
+                    // printf("Close socket from client %s\n", base_data[i - 3].client_id);
                     close(fds[i].fd);
 
                     /* clear fields */
@@ -443,7 +437,7 @@ int main(int argc, char const *argv[]) {
                     // error occurred, close client socket
                     perror("recv");
                     close(fds[i].fd);
-                    
+                    printf("Client %s disconnected.\n", base_data[i - 3].client_id);
 
                     /* save him in disconnected */
                     state.disconnected[state.index_disc++] = base_data[i - 3]; 
@@ -479,27 +473,12 @@ int main(int argc, char const *argv[]) {
                         perror("[SERVER] Unable to send command\n");
                         exit(EXIT_FAILURE);
                     } else {
-                        printf("[SERVER] TERMINATOR sent! -> %d", bloc.instruction);
+                       //  printf("[SERVER] TERMINATOR sent! -> %d", bloc.instruction);
                     }                
                 }
                 
                 break;
             }
-
-            // /* send hello command to all clients connected */
-            // if(command[0] != '\0' && strcmp(command, "hello\n") == 0) {
-
-            //     /* send to every client */
-            //     for (int i = 0; i < nr_base_data; i++) {
-            //         if(send(base_data[i].file_desc->fd, command, strlen(command), 0) < 0){
-            //             perror("[SERVER] Unable to send command\n");
-            //             exit(EXIT_FAILURE);
-            //         } else {
-            //             printf("[SERVER] HELLO sent! -> %s", command);
-            //         }                
-            //     }
-
-            // }
 
 
         }
@@ -554,7 +533,7 @@ int main(int argc, char const *argv[]) {
                     /* copy data from BUFFER -> MSG_UDP.INT */
                     msg_udp.INT = data;
 
-                    printf("topic %s - tip date %d - payload %d\n", msg_udp.topic, msg_udp.type, msg_udp.INT);
+                    // printf("topic %s - tip date %d - payload %d\n", msg_udp.topic, msg_udp.type, msg_udp.INT);
                 } break;
 
                 case 1: {
@@ -565,7 +544,7 @@ int main(int argc, char const *argv[]) {
 
                     msg_udp.SHORT_REAL = result;
 
-                    printf("topic %s - tip date %d - payload %.3f\n", msg_udp.topic, msg_udp.type, msg_udp.SHORT_REAL);
+                    // printf("topic %s - tip date %d - payload %.3f\n", msg_udp.topic, msg_udp.type, msg_udp.SHORT_REAL);
                 } break;
 
                 case 2: {
@@ -585,7 +564,7 @@ int main(int argc, char const *argv[]) {
 
                     msg_udp.FLOAT = result;
 
-                    printf("topic %s - tip date %d - payload %.3f\n", msg_udp.topic, msg_udp.type, msg_udp.FLOAT);
+                    // printf("topic %s - tip date %d - payload %.3f\n", msg_udp.topic, msg_udp.type, msg_udp.FLOAT);
                 } break;
 
                 case 3: {
@@ -596,7 +575,7 @@ int main(int argc, char const *argv[]) {
                     memcpy(payload, buffer + 51, (n - 50));
                     strncpy(msg_udp.payload, payload, (n-50));
                     
-                    printf("topic %s - tip date %d - payload %s\n", msg_udp.topic, msg_udp.type, msg_udp.payload);
+                    // printf("topic %s - tip date %d - payload %s\n", msg_udp.topic, msg_udp.type, msg_udp.payload);
                 } break;
                 
                 default:
@@ -625,6 +604,8 @@ int main(int argc, char const *argv[]) {
 
         /* receive info from socket_tcp */
         client_sock = accept(socket_tcp, (struct sockaddr*)&client_addr, &client_size);
+        setsockopt(client_sock, IPPROTO_TCP, TCP_NODELAY, (char *)&flagul, sizeof(int));
+
         if (client_sock < 0) {
             if (errno == EWOULDBLOCK || errno == EAGAIN) {
                 // no incoming connections, do something else or sleep
@@ -674,9 +655,9 @@ int main(int argc, char const *argv[]) {
 
             /* check id is disconnected */
             for(int c = 0 ; c < state.index_disc; c++) {
-                printf("client_id : %s disconected : %s apoi newline\n", client_id, state.disconnected[c].client_id);
+                // printf("client_id : %s disconected : %s apoi newline\n", client_id, state.disconnected[c].client_id);
                 if(strcmp(client_id, state.disconnected[c].client_id) == 0) {
-                    printf("Client %s was disconnected.\n", client_id);
+                    // printf("Client %s was disconnected.\n", client_id);
 
                     /* restore him */
                     disc = 1;
@@ -722,7 +703,7 @@ int main(int argc, char const *argv[]) {
                     base_data[nr_base_data].key = key;
                 }
 
-                printf("!!!! stfd : %d and time %d \n ", base_data[nr_base_data].stfd, base_data[nr_base_data].quantum_client);
+                // printf("!!!! stfd : %d and time %d \n ", base_data[nr_base_data].stfd, base_data[nr_base_data].quantum_client);
                 if(base_data[nr_base_data].stfd != 1)
                     /* set client quantum */
                     base_data[nr_base_data].quantum_client = time;
@@ -747,7 +728,7 @@ int main(int argc, char const *argv[]) {
 
         send_client: 
         
-        printf(" nr de conectari : %d\n", nr_base_data);
+        // printf(" nr de conectari : %d\n", nr_base_data);
 
         int flag = 0;
         
@@ -763,30 +744,30 @@ int main(int argc, char const *argv[]) {
                 for(int total = 0 ; total < base_data[i - 3].nr_topics ; total++) {
                     
                     /* compare topics */
-                    printf("\ncompare %s = %s acum backslash n \n", mesaje[m].topic, base_data[i - 3].nr_topics_sub[total]);
+                    // printf("\ncompare %s = %s acum backslash n \n", mesaje[m].topic, base_data[i - 3].nr_topics_sub[total]);
 
                     /* flag is 0 */
                     flag = 0;
 
                     /* we are on the same topic and quantum is right and we are subscribed */
-                    printf("quantum topic : %d and quantum client %d\n", mesaje[m].quantum_message, base_data[i - 3].quantum_client);
+                    // printf("quantum topic : %d and quantum client %d\n", mesaje[m].quantum_message, base_data[i - 3].quantum_client);
                     if(strcmp(mesaje[m].topic, base_data[i - 3].nr_topics_sub[total]) == 0 && mesaje[m].quantum_message > base_data[i - 3].quantum_client && base_data[i - 3].active[total] == 1) {
                         
                         /* iterate through all keys */
                         for(int nr_key = 0 ; nr_key < 10 ; nr_key++) {
                             
                             /* we send this message before to this client */
-                            printf("\nmesaje key %d base_data %d key\n", mesaje[m].keys[nr_key], base_data[i - 3].key);
+                            // printf("\nmesaje key %d base_data %d key\n", mesaje[m].keys[nr_key], base_data[i - 3].key);
                             if(mesaje[m].keys[nr_key] == base_data[i - 3].key) {
                                 /* go to the next message */
-                                printf("\n WARN !! we send this before! \n");
+                            //     printf("\n WARN !! we send this before! \n");
                                 flag = 1;
                                 break;
                             }
 
                             /* if is not a key, put a key ! */
                             if(mesaje[m].keys[nr_key] == -1) {
-                                printf("\n PUT A KEY HERE! \n");
+                            //    printf("\n PUT A KEY HERE! \n");
                                 mesaje[m].keys[nr_key] = base_data[i - 3].key;
                                 break;
                             }
@@ -820,7 +801,7 @@ int main(int argc, char const *argv[]) {
                                 perror("[SERVER] Unable to send block\n");
                                 exit(EXIT_FAILURE);
                             } else {
-                                printf("[SERVER] block sended \n");
+                            //    printf("[SERVER] block sended \n");
 
                             }  
                             
@@ -829,7 +810,7 @@ int main(int argc, char const *argv[]) {
                                 perror("[SERVER] Unable to send topic\n");
                                 exit(EXIT_FAILURE);
                             } else {
-                                printf("[SERVER] TOPIC sent! -> %s\n", mesaje[m].topic);
+                            //    printf("[SERVER] TOPIC sent! -> %s\n", mesaje[m].topic);
 
                             }  
                         }   break;
@@ -847,10 +828,10 @@ int main(int argc, char const *argv[]) {
 
                             /* send data block first */
                             if(send(fds[i].fd, &bloc, sizeof(block), 0) < 0){
-                                perror("[SERVER] Unable to send block\n");
+                            //    perror("[SERVER] Unable to send block\n");
                                 exit(EXIT_FAILURE);
                             } else {
-                                printf("[SERVER] block sended \n");
+                            //    printf("[SERVER] block sended \n");
 
                             }  
                             
@@ -858,7 +839,7 @@ int main(int argc, char const *argv[]) {
                                 perror("[SERVER] Unable to send topic\n");
                                 exit(EXIT_FAILURE);
                             } else {
-                                printf("[SERVER] TOPIC sent! -> %s", mesaje[m].topic);
+                            //    printf("[SERVER] TOPIC sent! -> %s", mesaje[m].topic);
 
                             }  
                         }   break;
@@ -880,7 +861,7 @@ int main(int argc, char const *argv[]) {
                                 perror("[SERVER] Unable to send block\n");
                                 exit(EXIT_FAILURE);
                             } else {
-                                printf("[SERVER] block sended \n");
+                            //    printf("[SERVER] block sended \n");
 
                             }
 
@@ -888,7 +869,7 @@ int main(int argc, char const *argv[]) {
                                 perror("[SERVER] Unable to send topic\n");
                                 exit(EXIT_FAILURE);
                             } else {
-                                printf("[SERVER] TOPIC sent! -> %s", mesaje[m].topic);
+                            //    printf("[SERVER] TOPIC sent! -> %s", mesaje[m].topic);
 
                             }  
                         }   break;
@@ -913,7 +894,7 @@ int main(int argc, char const *argv[]) {
                                 perror("[SERVER] Unable to send block\n");
                                 exit(EXIT_FAILURE);
                             } else {
-                                printf("[SERVER] block sended \n");
+                            //    printf("[SERVER] block sended \n");
 
                             }
                             
@@ -922,7 +903,7 @@ int main(int argc, char const *argv[]) {
                                 perror("[SERVER] Unable to send topic\n");
                                 exit(EXIT_FAILURE);
                             } else {
-                                printf("[SERVER] TOPIC sent! -> %s", mesaje[m].topic);
+                            //    printf("[SERVER] TOPIC sent! -> %s", mesaje[m].topic);
 
                             }  
                         }   break;
@@ -948,43 +929,43 @@ int main(int argc, char const *argv[]) {
     }
 
 
-    for(int i = 0 ; i < counter ; i++) {
-        printf("\n ******************************** \n");
-        printf("    Message nr %d ip: %s port %s    \n", i + 1, mesaje[i].ip_address, mesaje[i].port);
-        printf("Topic : %s\n", mesaje[i].topic);
-        printf("Type : %d\n", mesaje[i].type);
-        printf("Key : %d\n", mesaje[i].keys[0]);
-        switch (mesaje[i].type)
-        {
-        case 0:
-            printf("INT %d\n", mesaje[i].INT);
-            break;
-        case 1:
-            printf("SHORT_REAL %f\n", mesaje[i].SHORT_REAL);
-            break;
-        case 2:
-            printf("FLOAT %f\n", mesaje[i].FLOAT);
-            break;
-        case 3:
-            printf("PAYLOAD %s\n", mesaje[i].payload);
-            break;
+    // for(int i = 0 ; i < counter ; i++) {
+    //     printf("\n ******************************** \n");
+    //     printf("    Message nr %d ip: %s port %s    \n", i + 1, mesaje[i].ip_address, mesaje[i].port);
+    //     printf("Topic : %s\n", mesaje[i].topic);
+    //     printf("Type : %d\n", mesaje[i].type);
+    //     printf("Key : %d\n", mesaje[i].keys[0]);
+    //     switch (mesaje[i].type)
+    //     {
+    //     case 0:
+    //         printf("INT %d\n", mesaje[i].INT);
+    //         break;
+    //     case 1:
+    //         printf("SHORT_REAL %f\n", mesaje[i].SHORT_REAL);
+    //         break;
+    //     case 2:
+    //         printf("FLOAT %f\n", mesaje[i].FLOAT);
+    //         break;
+    //     case 3:
+    //         printf("PAYLOAD %s\n", mesaje[i].payload);
+    //         break;
         
-        default:
-            printf("Eroare stocare!\n");
-            break;
-        }
+    //     default:
+    //         printf("Eroare stocare!\n");
+    //         break;
+    //     }
 
-    }
+    // }
 
     for(int i = 0 ; i < nr_base_data ; i++) {
         /* close the socket */
-        printf("Client %s disconnected.\n", base_data[i].client_id);
+        // printf("Client %s disconnected.\n", base_data[i].client_id);
         close(client_sock);
     }
 
-    printf("socket_tcp disconnected\n");
+    // printf("socket_tcp disconnected\n");
     close(socket_tcp);
-    printf("socket_udp disconnected\n");
+    // printf("socket_udp disconnected\n");
     close(sockfd_udp);
     return 0;
 }
