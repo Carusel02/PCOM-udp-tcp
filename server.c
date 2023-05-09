@@ -130,11 +130,15 @@ typedef struct database {
     int nr_topics;
     /*int active topics*/
     int active[100];
+    /* store forward topics */
+    int store_forward[100];
 
     /* unique key */
     int key;
     /* quantum time client */
     int quantum_client;
+    /* quantum time client reconnected */
+    int quantum_client_recon;
 
     /* store-forward */
     int stfd;
@@ -324,7 +328,7 @@ int main(int argc, char const *argv[]) {
             exit(1);
         }
 
-        /* iterate through clients */
+        /* iterate through clients (PROCESS COMMANDS FROM CLIENTS) */
         for (int i = 3; i < nr_fd; i++) {
             
             /* we received a command */
@@ -354,11 +358,15 @@ int main(int argc, char const *argv[]) {
                         extract_topic2(message_tcp, topic, &stfd);
                         // printf("topic is : %s with stfd : %d\n", topic, stfd);
 
+                        // erase 
                         /* set stfd protocol */
-                        base_data[i - 3].stfd = stfd;
+                        // base_data[i - 3].stfd = stfd;
 
                         /* make active topic */
                         base_data[i - 3].active[base_data[i - 3].nr_topics] = 1;
+
+                        /* make topic use store-forward */
+                        base_data[i - 3].store_forward[base_data[i - 3].nr_topics] = stfd;
 
                         /* copy topic in base_data client */
                         strcpy(base_data[i - 3].nr_topics_sub[base_data[i - 3].nr_topics++], topic);
@@ -458,7 +466,7 @@ int main(int argc, char const *argv[]) {
         }
 
 
-        /* read from STDIN */
+        /* read from STDIN (SEND EXIT TO ALL CLIENTS) */
         if ((fds[0].revents & POLLIN) != 0) {
             
             /* wait for exit command */
@@ -484,7 +492,7 @@ int main(int argc, char const *argv[]) {
 
         }
 
-        /* read from UDP */
+        /* read from UDP (RECEIVE MESSAGES) */
         if ((fds[1].revents & POLLIN) != 0) {
             
             /* clean buffer */
@@ -600,7 +608,7 @@ int main(int argc, char const *argv[]) {
 
         }
 
-        /* read from TCP */
+        /* read from TCP (CLIENTS CONNECT) */
         if ((fds[2].revents & POLLIN) != 0) {
 
         /* receive info from socket_tcp */
@@ -704,20 +712,23 @@ int main(int argc, char const *argv[]) {
                     base_data[nr_base_data].key = key;
                 }
 
-                // printf("!!!! stfd : %d and time %d \n ", base_data[nr_base_data].stfd, base_data[nr_base_data].quantum_client);
-                if(base_data[nr_base_data].stfd != 1)
-                    /* set client quantum */
-                    base_data[nr_base_data].quantum_client = time;
                 
-                
-                
+                /* primul meu timp de cand m am logat */
+                if(disc == 1)
+                    base_data[nr_base_data].quantum_client_recon = base_data[nr_base_data].quantum_client_recon;
+                else
+                    base_data[nr_base_data].quantum_client_recon = time;
+
+                /* timpul cand ma loghez iar */
+                base_data[nr_base_data].quantum_client = time;
+
                 key = key + 3;
                 nr_base_data++;
                 nr_fd++;
 
-                if(base_data[nr_base_data - 1].stfd == 1) {
-                    goto send_client;
-                }
+                /* go sending messages */
+                goto send_client;
+                
 
             }
             
@@ -750,9 +761,18 @@ int main(int argc, char const *argv[]) {
                     /* flag is 0 */
                     flag = 0;
 
+                    int check_with_quantum = 0;
+
+                    if(base_data[i - 3].store_forward[total] == 1) {
+                        /* keep first time of client */
+                        check_with_quantum = base_data[i - 3].quantum_client_recon;
+                    } else
+                        check_with_quantum = base_data[i - 3].quantum_client;
+
+                    
                     /* we are on the same topic and quantum is right and we are subscribed */
                     // printf("quantum topic : %d and quantum client %d\n", mesaje[m].quantum_message, base_data[i - 3].quantum_client);
-                    if(strcmp(mesaje[m].topic, base_data[i - 3].nr_topics_sub[total]) == 0 && mesaje[m].quantum_message > base_data[i - 3].quantum_client && base_data[i - 3].active[total] == 1) {
+                    if(strcmp(mesaje[m].topic, base_data[i - 3].nr_topics_sub[total]) == 0 && mesaje[m].quantum_message > check_with_quantum && base_data[i - 3].active[total] == 1) {
                         
                         /* iterate through all keys */
                         for(int nr_key = 0 ; nr_key < 10 ; nr_key++) {
