@@ -22,7 +22,7 @@ typedef struct block {
     int size;
     int encode_type;
 
-} block;
+} __attribute__((packed))block;
 
 typedef struct encode0 {
 
@@ -36,7 +36,7 @@ typedef struct encode0 {
     char ip_address[16];
     char port[6];
 
-} encode0;
+} __attribute__((packed))encode0;
 
 typedef struct encode1 {
 
@@ -51,7 +51,7 @@ typedef struct encode1 {
     char port[6];
 
 
-} encode1;
+} __attribute__((packed))encode1;
 
 typedef struct encode2 {
 
@@ -64,8 +64,7 @@ typedef struct encode2 {
     char ip_address[16];
     char port[6];
 
-
-} encode2;
+} __attribute__((packed))encode2;
 
 typedef struct encode3 {
 
@@ -80,7 +79,7 @@ typedef struct encode3 {
     /* modify this */
     char payload[1600];
 
-} encode3;
+} __attribute__((packed))encode3;
 
 int main(int argc, char const *argv[]) {
 

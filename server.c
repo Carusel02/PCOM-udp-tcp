@@ -47,7 +47,7 @@ typedef struct message {
     /* quantum message */
     int quantum_message;
 
-} message;
+} __attribute__((packed))message;
 
 typedef struct block {
 
@@ -55,7 +55,7 @@ typedef struct block {
     int size;
     int encode_type;
 
-} block;
+} __attribute__((packed))block;
 
 
 typedef struct encode0 {
@@ -70,7 +70,7 @@ typedef struct encode0 {
     char ip_address[16];
     char port[6];
 
-} encode0;
+} __attribute__((packed))encode0;
 
 typedef struct encode1 {
 
@@ -85,7 +85,7 @@ typedef struct encode1 {
     char port[6];
 
 
-} encode1;
+} __attribute__((packed))encode1;
 
 typedef struct encode2 {
 
@@ -99,7 +99,7 @@ typedef struct encode2 {
     char port[6];
 
 
-} encode2;
+} __attribute__((packed))encode2;
 
 typedef struct encode3 {
 
@@ -115,7 +115,7 @@ typedef struct encode3 {
     char payload[1600];
 
 
-} encode3;
+} __attribute__((packed))encode3;
 
 typedef struct database {
     /* client id */
@@ -308,7 +308,8 @@ int main(int argc, char const *argv[]) {
 
 
     /* create array messages */
-    message mesaje[500];
+    message mesaje[1000];
+    // memset(&mesaje, 0, sizeof(mesaje));
 
      /* server loop */
     while (true) {
@@ -780,6 +781,7 @@ int main(int argc, char const *argv[]) {
                         // send the topic WITH PROTOCOL
 
                         block bloc;
+                        memset(&bloc, 0, sizeof(bloc));
                         bloc.instruction = 1;
                         bloc.size = 0;
 
@@ -789,6 +791,7 @@ int main(int argc, char const *argv[]) {
                         case 0: {
                             /* BUILD encode0 */
                             encode0 encode;
+                            memset(&encode, 0, sizeof(encode0));
                             strcpy(encode.topic, mesaje[m].topic);
                             strcpy(encode.ip_address, mesaje[m].ip_address);
                             strcpy(encode.port, mesaje[m].port);
@@ -818,6 +821,7 @@ int main(int argc, char const *argv[]) {
                         case 1: {
                             /* BUILD encode1 */
                             encode1 encode;
+                            memset(&encode, 0, sizeof(encode1));
                             strcpy(encode.topic, mesaje[m].topic);
                             strcpy(encode.ip_address, mesaje[m].ip_address);
                             strcpy(encode.port, mesaje[m].port);
@@ -848,6 +852,7 @@ int main(int argc, char const *argv[]) {
                         case 2: {
                             /* BUILD encode2 */
                             encode2 encode;
+                            memset(&encode, 0, sizeof(encode2));
                             strcpy(encode.topic, mesaje[m].topic);
                             strcpy(encode.ip_address, mesaje[m].ip_address);
                             strcpy(encode.port, mesaje[m].port);
@@ -878,15 +883,18 @@ int main(int argc, char const *argv[]) {
                         case 3: {
                             /* BUILD encode3 */
                             encode3 encode;
+                            memset(&encode, 0 , sizeof(encode3));
                             memset(encode.topic, 0 , sizeof(encode.topic));
                             memset(encode.ip_address, 0, sizeof(encode.ip_address));
                             memset(encode.port, 0, sizeof(encode.port));
+                            memset(encode.payload, 0 , sizeof(encode.payload));
                             strcpy(encode.topic, mesaje[m].topic);
                             strcpy(encode.ip_address, mesaje[m].ip_address);
                             strcpy(encode.port, mesaje[m].port);
                             encode.type = 3;
-                            strncpy(encode.payload, mesaje[m].payload, strlen(mesaje[m].payload) + 1);
-                            bloc.size = sizeof(encode.topic) + sizeof(encode.port) + sizeof(encode.ip_address) + strlen(mesaje[m].payload) + 10;
+                            strncpy(encode.payload, mesaje[m].payload, strlen(mesaje[m].payload));
+                            encode.payload[strlen(mesaje[m].payload)] = '\0';
+                            bloc.size = sizeof(unsigned int) + sizeof(encode.topic) + sizeof(encode.port) + sizeof(encode.ip_address) + strlen(encode.payload) + 150;
                             bloc.encode_type = 3;
 
                             /* send data block first */
