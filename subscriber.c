@@ -171,6 +171,8 @@ int main(int argc, char const *argv[]) {
     fds[nr_fd].events = POLLIN;
     nr_fd++;
 
+    block bloc;
+
     while(true) {
 
         /* make a poll, wait for readiness notification */
@@ -224,7 +226,8 @@ int main(int argc, char const *argv[]) {
         /* read from server SOCKET */
         if ((fds[1].revents & POLLIN) != 0) {
             /* Receive the response from server */
-            block bloc;
+
+            memset(&bloc, 0 , sizeof(block));
 
             if(recv(socket_desc, &bloc, sizeof(block), 0) < 0){
                 perror("[CLIENT] Error while receiving server's msg\n");
